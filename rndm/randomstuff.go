@@ -273,3 +273,76 @@ func main() {
 		fmt.Println(types.Field(i).Index[0], types.Field(i).Name, values.Field(i))
 	}
 }*/
+
+var (
+	mu       sync.Mutex
+	tempSlot int
+	tempName string
+	tempDesc string
+)
+
+func getTempSlot() int {
+	mu.Lock()
+	me := tempSlot
+	mu.Unlock()
+	return me
+}
+func setTempSlot(me int) {
+	mu.Lock()
+	tempSlot = me
+	mu.Unlock()
+}
+func getTempName() string {
+	mu.Lock()
+	me := tempName
+	mu.Unlock()
+	return me
+}
+func setTempName(me string) {
+	mu.Lock()
+	tempName = me
+	mu.Unlock()
+}
+func getTempDesc() string {
+	mu.Lock()
+	me := tempDesc
+	mu.Unlock()
+	return me
+}
+func setTempDesc(me string) {
+	mu.Lock()
+	tempDesc = me
+	mu.Unlock()
+}
+
+func createItem(userCreator *User) *Item {
+
+	i := &Item{}
+
+	intVar, err := strconv.Atoi(getSingleInput(userCreator, "EQ slot?"))
+	if err == nil {
+
+		i = &Item{
+			name: getSingleInput(userCreator, "Name of Item?"),
+			desc: getSingleInput(userCreator, "Desc of Item?"),
+			slot: intVar,
+		}
+	}
+	return i
+}
+
+func getSingleInput(u *User, question string) string {
+
+	u.session.WriteLine(question)
+	n, err := u.session.conn.Read(u.buf)
+	input := ""
+	if err == nil {
+		input = string(u.buf[0 : n-2])
+	}
+	if err != nil {
+		u.session.WriteLine("Error: " + fmt.Sprint(err))
+	}
+	u.session.WriteLine("Received Input: " + input)
+	return input
+
+}

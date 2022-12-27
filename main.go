@@ -6,7 +6,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 type Command struct {
@@ -42,6 +41,9 @@ type InputEvent struct {
 	msg string
 }
 
+type BroadcastEvent struct {
+}
+
 type UserJoinedEvent struct {
 }
 
@@ -53,6 +55,13 @@ type ClientInput struct {
 	user  *User
 	event interface{}
 	world *World
+}
+
+type ClientOutput struct {
+	user    *User
+	message string
+	event   interface{}
+	world   *World
 }
 
 type User struct {
@@ -382,7 +391,8 @@ func emoteHandler(input []string, usr *User, w *World) {
 	fail := true
 
 	for _, e := range w.emotes {
-		if strings.ToUpper(e.name) == strings.ToUpper(input[0]) {
+		if strings.EqualFold(e.name, input[0]) {
+			//if strings.ToUpper(e.name) == strings.ToUpper(input[0]) {
 			for _, u := range usr.room.users {
 				if hasTarget {
 					input[1] = strings.TrimLeft(input[1], " ")
@@ -393,17 +403,18 @@ func emoteHandler(input []string, usr *User, w *World) {
 						if len(tgt.name) < lenTar {
 							lenTar = len(tgt.name)
 						}
-						if strings.ToUpper(tgt.name[0:lenTar]) == strings.ToUpper(input[1][0:lenTar]) {
+						if strings.EqualFold(tgt.name[0:lenTar], input[1][0:lenTar]) {
+							//if strings.ToUpper(tgt.name[0:lenTar]) == strings.ToUpper(input[1][0:lenTar]) {
 							tar = tgt
 							fail = false
 						}
 					}
-					if fail == false {
+					if !fail {
 						if u != usr && u != tar {
-							u.session.WriteLine(color("cyan", usr.name) + e.tPt + color("cyan", tar.name) + ".")
+							clientOutputChan <- ClientOutput{u, color("cyan", usr.name) + e.tPt + color("cyan", tar.name) + ".", &BroadcastEvent{}, w}
 						}
 						if u != usr && u == tar {
-							u.session.WriteLine(color("cyan", usr.name) + e.tar)
+							clientOutputChan <- ClientOutput{u, color("cyan", usr.name) + e.tar, &BroadcastEvent{}, w}
 						}
 						if u == usr {
 							usr.session.WriteLine(e.fPt + color("cyan", tar.name))
@@ -413,13 +424,13 @@ func emoteHandler(input []string, usr *User, w *World) {
 				if !hasTarget {
 					fail = false
 					if u != usr {
-						u.session.WriteLine(color("cyan", usr.name) + e.tP)
+						clientOutputChan <- ClientOutput{u, color("cyan", usr.name) + e.tP, &BroadcastEvent{}, w}
 					} else {
 						usr.session.WriteLine(e.fP)
 					}
 				}
 			}
-			if fail == true {
+			if fail {
 				usr.session.WriteLine("Emote failed. Most likely unavailable recipient.")
 				return
 			}
@@ -499,7 +510,7 @@ func (r *Room) east(w *World) *Room {
 			return getRoomByID(ex.linkedID, w)
 		}
 	}
-	fmt.Println(fmt.Sprintf("Tried getting east exit in room %s, found none", r.name))
+	fmt.Printf("Tried getting east exit in room %s, found none\r\n", r.name)
 	return nil
 }
 func (r *Room) west(w *World) *Room {
@@ -509,7 +520,7 @@ func (r *Room) west(w *World) *Room {
 			return getRoomByID(ex.linkedID, w)
 		}
 	}
-	fmt.Println(fmt.Sprintf("Tried getting west exit in room %s, found none", r.name))
+	fmt.Printf("Tried getting west exit in room %s, found none\r\n", r.name)
 	return nil
 }
 func (r *Room) north(w *World) *Room {
@@ -519,7 +530,7 @@ func (r *Room) north(w *World) *Room {
 			return getRoomByID(ex.linkedID, w)
 		}
 	}
-	fmt.Println(fmt.Sprintf("Tried getting north exit in room %s, found none", r.name))
+	fmt.Printf("Tried getting north exit in room %s, found none\r\n", r.name)
 	return nil
 }
 func (r *Room) south(w *World) *Room {
@@ -529,7 +540,7 @@ func (r *Room) south(w *World) *Room {
 			return getRoomByID(ex.linkedID, w)
 		}
 	}
-	fmt.Println(fmt.Sprintf("Tried getting south exit in room %s, found none", r.name))
+	fmt.Printf("Tried getting south exit in room %s, found none\r\n", r.name)
 	return nil
 }
 func (r *Room) up(w *World) *Room {
@@ -539,7 +550,7 @@ func (r *Room) up(w *World) *Room {
 			return getRoomByID(ex.linkedID, w)
 		}
 	}
-	fmt.Println(fmt.Sprintf("Tried getting up exit in room %s, found none", r.name))
+	fmt.Printf("Tried getting up exit in room %s, found none\r\n", r.name)
 	return nil
 }
 func (r *Room) down(w *World) *Room {
@@ -549,7 +560,7 @@ func (r *Room) down(w *World) *Room {
 			return getRoomByID(ex.linkedID, w)
 		}
 	}
-	fmt.Println(fmt.Sprintf("Tried getting down exit in room %s, found none", r.name))
+	fmt.Printf("Tried getting down exit in room %s, found none\r\n", r.name)
 	return nil
 }
 func (r *Room) in(w *World) *Room {
@@ -559,7 +570,7 @@ func (r *Room) in(w *World) *Room {
 			return getRoomByID(ex.linkedID, w)
 		}
 	}
-	fmt.Println(fmt.Sprintf("Tried getting in exit in room %s, found none", r.name))
+	fmt.Printf("Tried getting in exit in room %s, found none\r\n", r.name)
 	return nil
 }
 func (r *Room) out(w *World) *Room {
@@ -569,7 +580,7 @@ func (r *Room) out(w *World) *Room {
 			return getRoomByID(ex.linkedID, w)
 		}
 	}
-	fmt.Println(fmt.Sprintf("Tried getting out exit in room %s, found none", r.name))
+	fmt.Printf("Tried getting out exit in room %s, found none\r\n", r.name)
 	return nil
 }
 func (r *Room) through(w *World) *Room {
@@ -579,7 +590,7 @@ func (r *Room) through(w *World) *Room {
 			return getRoomByID(ex.linkedID, w)
 		}
 	}
-	fmt.Println(fmt.Sprintf("Tried getting through exit in room %s, found none", r.name))
+	fmt.Printf("Tried getting through exit in room %s, found none\r\n", r.name)
 	return nil
 }
 
@@ -592,6 +603,7 @@ func getRoomByID(id int, w *World) *Room {
 	return nil
 }
 
+// Builds room output
 func (r *Room) sendText(u *User) {
 	u.session.WriteLine(color("blue", r.name))
 	u.session.WriteLine(color("blue", "   "+r.desc))
@@ -610,15 +622,14 @@ func removeUserFromRoom(u *User, r *Room, w *World) {
 		if r == rm {
 			for n, usr := range r.users {
 				if usr == u {
-
 					rm.removeUser(n)
-					fmt.Println(fmt.Sprintf("%s, in room %s, removed from index #%s", u.name, r.name, fmt.Sprint(n)))
+					fmt.Printf("%s, in room %s, removed from index #%s\r\n", u.name, r.name, fmt.Sprint(n))
 					return
 				}
 			}
 		}
 	}
-	fmt.Println(fmt.Sprintf("Unable to remove %s from %s room index", u.name, r.name))
+	fmt.Printf("Unable to remove %s from %s room index\r\n", u.name, r.name)
 }
 
 func (r *Room) removeUser(i int) {
@@ -633,7 +644,7 @@ func (r *Room) addUser(u *User) {
 func isMoveValid(u *User, dir string, w *World) {
 	for _, exit := range u.room.exits {
 		if exit.keyword == dir {
-			moveUser(u, u.room, getRoomByID(exit.linkedID, w), dir)
+			moveUser(u, u.room, getRoomByID(exit.linkedID, w), dir, w)
 			return
 		}
 	}
@@ -653,37 +664,35 @@ func isMoveValid(u *User, dir string, w *World) {
 		if usr != u {
 			switch dir {
 			case "north", "south", "east", "west":
-				usr.session.WriteLine(color("green", u.name+" slams their face into an invisible wall to the "+dir+"."))
+				clientOutputChan <- ClientOutput{usr, color("green", u.name+" slams their face into an invisible wall to the "+dir+"."), &BroadcastEvent{}, w}
 			case "up":
-				usr.session.WriteLine(color("green", u.name+" climbs an invisible staircase and falls flat on their face."))
+				clientOutputChan <- ClientOutput{usr, color("green", u.name+" climbs an invisible staircase and falls flat on their face."), &BroadcastEvent{}, w}
 			case "down":
-				usr.session.WriteLine(color("green", u.name+" decends an imaginary staircase. Are we miming?"))
+				clientOutputChan <- ClientOutput{usr, color("green", u.name+" decends an imaginary staircase. Are we miming?"), &BroadcastEvent{}, w}
 			case "in", "out":
-				usr.session.WriteLine(color("green", u.name+" makes motions as if they're trying to crawl in or out of something..."))
+				clientOutputChan <- ClientOutput{usr, color("green", u.name+" makes motions as if they're trying to crawl in or out of something..."), &BroadcastEvent{}, w}
 			case "through":
-				usr.session.WriteLine(color("green", u.name+" successfully penetrates the air. You clap."))
+				clientOutputChan <- ClientOutput{usr, color("green", u.name+" successfully penetrates the air. You clap."), &BroadcastEvent{}, w}
 			}
 		}
 	}
 }
 
-func moveUser(u *User, from *Room, to *Room, dir string) {
+func moveUser(u *User, from *Room, to *Room, dir string, w *World) {
 	for n, user := range from.users {
 		if u == user {
 			from.removeUser(n)
-			fmt.Println(fmt.Sprintf("%s, in room %s, removed from index #%s", user.name, from.name, fmt.Sprint(n)))
+			fmt.Printf("%s, in room %s, removed from index #%s\r\n", user.name, from.name, fmt.Sprint(n))
 
 			for _, usr := range to.users {
-
-				usr.session.WriteLine(color("green", u.name+" arrives from the "+getOppDir(dir)+"."))
+				clientOutputChan <- ClientOutput{usr, color("green", u.name+" arrives from the "+getOppDir(dir)+"."), &BroadcastEvent{}, w}
 			}
 			to.addUser(u)
 			u.room = to
 			to.sendText(u)
 
 		} else {
-
-			user.session.WriteLine(color("green", u.name+" heads "+dir+"."))
+			clientOutputChan <- ClientOutput{user, color("green", u.name+" heads "+dir+"."), &BroadcastEvent{}, w}
 		}
 
 	}
@@ -774,7 +783,7 @@ func getNameFromConn(conn net.Conn) string {
 	return name
 }
 
-func executeCmd(cmd string, usr *User, w *World) {
+func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 
 	args := strings.Split(cmd, " ")
 	switch args[0] {
@@ -788,8 +797,7 @@ func executeCmd(cmd string, usr *User, w *World) {
 		} else {
 			for _, user := range usr.room.users {
 				if user != usr {
-
-					user.session.WriteLine(color("yellow", fmt.Sprintf("%s says, \"%s.\"", usr.name, strings.TrimLeft(msg, " "))))
+					eventCh <- ClientOutput{user, color("yellow", fmt.Sprintf("%s says, \"%s.\"", usr.name, strings.TrimLeft(msg, " "))), &BroadcastEvent{}, w}
 				}
 			}
 			usr.session.WriteLine(color("yellow", "You say, \""+strings.TrimLeft(msg, " ")+".\""))
@@ -832,18 +840,16 @@ func executeCmd(cmd string, usr *User, w *World) {
 								test = true
 							}
 						}
-						if test == false {
+						if !test {
 							rooms = append(rooms, r1)
-							for _, u1 := range r1.users {
-								recips = append(recips, u1)
-							}
+							recips = append(recips, r1.users...)
 						}
 					}
 				}
 			}
 		}
 		for _, recip := range recips {
-			recip.session.WriteLine(color("red", fmt.Sprintf("%s yells, \"%s.\"", usr.name, msg)))
+			eventCh <- ClientOutput{recip, color("red", fmt.Sprintf("%s yells, \"%s.\"", usr.name, msg)), &BroadcastEvent{}, w}
 		}
 		usr.session.WriteLine(color("red", fmt.Sprintf("You yell, \"%s.\"", msg)))
 	case "shout":
@@ -855,7 +861,7 @@ func executeCmd(cmd string, usr *User, w *World) {
 		msg = strings.TrimLeft(msg, " ")
 		for _, recip := range w.users {
 			if recip != usr {
-				recip.session.WriteLine(color("blue", fmt.Sprintf("%s shouts, \"%s.\"", usr.name, msg)))
+				eventCh <- ClientOutput{recip, color("blue", fmt.Sprintf("%s shouts, \"%s.\"", usr.name, msg)), &BroadcastEvent{}, w}
 			}
 		}
 		usr.session.WriteLine(color("blue", fmt.Sprintf("You shout, \"%s.\"", msg)))
@@ -931,7 +937,6 @@ func executeCmd(cmd string, usr *User, w *World) {
 	case "go":
 		if len(args) < 2 {
 			usr.session.WriteLine(color("magenta", "Where do you want to go?"))
-			return
 		} else {
 			switch args[1] {
 			case "in", "out", "through", "iI", "o", "t":
@@ -944,13 +949,10 @@ func executeCmd(cmd string, usr *User, w *World) {
 					case "t":
 						args[1] = "through"
 					}
-
 				}
 				isMoveValid(usr, args[1], w)
-				return
 			default:
 				usr.session.WriteLine(color("magenta", fmt.Sprintf("You can't go '%s.'", args[1])))
-				return
 			}
 		}
 	case "":
@@ -978,13 +980,17 @@ func executeCmd(cmd string, usr *User, w *World) {
 					slot: slot,
 				}
 				for _, itm := range w.items {
-					if strings.ToUpper(itm.name) == strings.ToUpper(i.name) {
+					if strings.EqualFold(itm.name, i.name) {
+						//if strings.ToUpper(itm.name) == strings.ToUpper(i.name) {
 						fail = true
 						usr.session.WriteLine("Item name exists in world.")
-						return
+
+					}
+					if fail {
+						break
 					}
 				}
-				if fail == false {
+				if !fail {
 					w.items = append(w.items, i)
 					usr.session.WriteLine("Added: " + i.name + " - " + i.desc + " - " + fmt.Sprint(i.slot))
 				}
@@ -996,23 +1002,6 @@ func executeCmd(cmd string, usr *User, w *World) {
 		} else {
 			usr.session.WriteLine("Not enough arguments to make an item.")
 		}
-		/*if i := createItem(usr); i != nil && i.name != "" && i.desc != "" {
-			for _, itm := range w.items {
-				if i.name == itm.name {
-					fmt.Println(usr.name + " failed item creation.")
-					usr.session.WriteLine("Failed.")
-					return
-				}
-			}
-			w.items = append(w.items, i)
-		} else {
-			fmt.Println(usr.name + " failed item creation.")
-			usr.session.WriteLine("Failed.")
-		}
-		for _, itm := range w.items {
-			usr.session.WriteLine(itm.name + " - " + itm.desc + " - " + fmt.Sprint(itm.slot))
-		}*/
-
 	case "listitems":
 		for _, itm := range w.items {
 			usr.session.WriteLine(itm.name + " - " + itm.desc + " - " + fmt.Sprint(itm.slot))
@@ -1025,13 +1014,17 @@ func executeCmd(cmd string, usr *User, w *World) {
 		if len(args) > 1 {
 			fail := true
 			for _, itm := range w.items {
-				if strings.ToUpper(itm.name) == strings.ToUpper(strings.TrimLeft(giveStr, " ")) {
+				if strings.EqualFold(itm.name, strings.TrimLeft(giveStr, " ")) {
+					//if strings.ToUpper(itm.name) == strings.ToUpper(strings.TrimLeft(giveStr, " ")) {
 					usr.char.inv = append(usr.char.inv, itm)
 					usr.session.WriteLine("You have received " + itm.name)
 					fail = false
 				}
+				if !fail {
+					break
+				}
 			}
-			if fail == true {
+			if fail {
 				usr.session.WriteLine("Did not find item: " + args[1])
 			}
 		} else {
@@ -1060,13 +1053,16 @@ func executeCmd(cmd string, usr *User, w *World) {
 				if len(i.name) < lenStr {
 					adjStr = len(i.name)
 				}
-				if strings.ToUpper(i.name[0:adjStr]) == strings.ToUpper(wearStr[0:adjStr]) {
-					tryToWear(i, usr)
+				if strings.EqualFold(i.name[0:adjStr], wearStr[0:adjStr]) {
+					//if strings.ToUpper(i.name[0:adjStr]) == strings.ToUpper(wearStr[0:adjStr]) {
+					tryToWear(i, usr, w)
 					fail = false
-					return
+				}
+				if !fail {
+					break
 				}
 			}
-			if fail == true {
+			if fail {
 				usr.session.WriteLine("You are not carrying " + args[1])
 			}
 		} else {
@@ -1080,7 +1076,7 @@ func executeCmd(cmd string, usr *User, w *World) {
 			}
 			remStr = strings.TrimLeft(remStr, " ")
 
-			tryToRemove(strings.TrimLeft(remStr, " "), usr)
+			tryToRemove(strings.TrimLeft(remStr, " "), usr, w)
 		} else {
 			usr.session.WriteLine("What are you trying to remove?")
 		}
@@ -1116,21 +1112,24 @@ func executeCmd(cmd string, usr *User, w *World) {
 				if len(i.name) < lenStr {
 					adjLen = len(i.name)
 				}
-				if strings.ToUpper(i.name[0:adjLen]) == strings.ToUpper(dropStr[0:adjLen]) {
+				if strings.EqualFold(i.name[0:adjLen], dropStr[0:adjLen]) {
+					//if strings.ToUpper(i.name[0:adjLen]) == strings.ToUpper(dropStr[0:adjLen]) {
 					fail = false
 					usr.room.items = append(usr.room.items, i)
 					removeItemFromInventory(i, usr)
 					for _, u := range usr.room.users {
 						if u != usr {
-							u.session.WriteLine(usr.name + " drops a " + color("cyan", i.name) + " on the ground here.")
+							eventCh <- ClientOutput{u, usr.name + " drops a " + color("cyan", i.name) + " on the ground here.", &BroadcastEvent{}, w}
 						} else {
 							usr.session.WriteLine("You drop a " + color("cyan", i.name) + " on the ground here.")
 						}
 					}
-					return
+				}
+				if !fail {
+					break
 				}
 			}
-			if fail == true {
+			if fail {
 				usr.session.WriteLine(color("magenta", "You are not carrying that. "+dropStr))
 			}
 		} else {
@@ -1151,23 +1150,24 @@ func executeCmd(cmd string, usr *User, w *World) {
 				if len(itm.name) < lenStr {
 					adjLen = len(itm.name)
 				}
-				if strings.ToUpper(itm.name[0:adjLen]) == strings.ToUpper(takeStr[0:adjLen]) {
+				if strings.EqualFold(itm.name[0:adjLen], takeStr[0:adjLen]) {
+					//if strings.ToUpper(itm.name[0:adjLen]) == strings.ToUpper(takeStr[0:adjLen]) {
 					fail = false
 					removeItemFromRoom(itm, usr.room)
 					usr.char.inv = append(usr.char.inv, itm)
 					for _, u := range usr.room.users {
 						if u != usr {
-							u.session.WriteLine(usr.name + " picks up a " + color("cyan", itm.name) + " off the ground here.")
+							eventCh <- ClientOutput{u, usr.name + " picks up a " + color("cyan", itm.name) + " off the ground here.", &BroadcastEvent{}, w}
 						} else {
 							usr.session.WriteLine("You pick up a " + color("cyan", itm.name) + " off the ground here.")
 						}
 					}
 				}
-				if fail == false {
+				if !fail {
 					break
 				}
 			}
-			if fail == true {
+			if fail {
 				usr.session.WriteLine(color("magenta", "You don't see that here. "+takeStr))
 			}
 
@@ -1176,6 +1176,9 @@ func executeCmd(cmd string, usr *User, w *World) {
 		}
 	case "exa", "examine":
 		if len(args) > 1 {
+			if args[1] == "" {
+				return
+			}
 			exaStr := ""
 			fail := true
 			for i := 1; i < len(args); i++ {
@@ -1189,13 +1192,14 @@ func executeCmd(cmd string, usr *User, w *World) {
 				if len(u.name) < adjLen {
 					adjLen = len(u.name)
 				}
-				if strings.ToUpper(u.name[0:adjLen]) == strings.ToUpper(exaStr[0:adjLen]) {
+				if strings.EqualFold(u.name[0:adjLen], exaStr[0:adjLen]) {
+					//if strings.ToUpper(u.name[0:adjLen]) == strings.ToUpper(exaStr[0:adjLen]) {
 					fail = false
 					itms := u.eqToItemArray()
-					u.session.WriteLine(color("cyan", usr.name) + " looks you over thoroughly.")
+					eventCh <- ClientOutput{u, color("cyan", usr.name) + " looks you over thoroughly.", &BroadcastEvent{}, w}
 					for _, nt := range usr.room.users {
 						if nt != u && nt != usr {
-							nt.session.WriteLine(color("cyan", usr.name) + " looks over " + u.name + "'s equipment.")
+							eventCh <- ClientOutput{nt, color("cyan", usr.name) + " looks over " + u.name + "'s equipment.", &BroadcastEvent{}, w}
 						}
 					}
 					usr.session.WriteLine(u.name + " is wearing:")
@@ -1214,7 +1218,8 @@ func executeCmd(cmd string, usr *User, w *World) {
 				if len(i.name) < adjLen {
 					adjLen = len(i.name)
 				}
-				if strings.ToUpper(i.name[0:adjLen]) == strings.ToUpper(exaStr[0:adjLen]) {
+				if strings.EqualFold(i.name[0:adjLen], exaStr[0:adjLen]) {
+					//if strings.ToUpper(i.name[0:adjLen]) == strings.ToUpper(exaStr[0:adjLen]) {
 					fail = false
 					usr.session.WriteLine("You take a closer look at a " + color("cyan", i.name) + "...")
 					usr.session.WriteLine("    " + i.desc)
@@ -1226,7 +1231,8 @@ func executeCmd(cmd string, usr *User, w *World) {
 				if len(i.name) < adjLen {
 					adjLen = len(i.name)
 				}
-				if strings.ToUpper(i.name[0:adjLen]) == strings.ToUpper(exaStr[0:adjLen]) {
+				if strings.EqualFold(i.name[0:adjLen], exaStr[0:adjLen]) {
+					//if strings.ToUpper(i.name[0:adjLen]) == strings.ToUpper(exaStr[0:adjLen]) {
 					fail = false
 					usr.session.WriteLine("You take a closer look at a " + color("cyan", i.name) + "...")
 					usr.session.WriteLine("    " + i.desc)
@@ -1239,14 +1245,15 @@ func executeCmd(cmd string, usr *User, w *World) {
 				if len(i.name) < adjLen {
 					adjLen = len(i.name)
 				}
-				if strings.ToUpper(i.name[0:adjLen]) == strings.ToUpper(exaStr[0:adjLen]) {
+				if strings.EqualFold(i.name[0:adjLen], exaStr[0:adjLen]) {
+					//if strings.ToUpper(i.name[0:adjLen]) == strings.ToUpper(exaStr[0:adjLen]) {
 					fail = false
 					usr.session.WriteLine("You take a closer look at a " + color("cyan", i.name) + "...")
 					usr.session.WriteLine("    " + i.desc)
 					return
 				}
 			}
-			if fail == true {
+			if fail {
 				usr.session.WriteLine(color("magenta", "You see nothing with that name here."))
 			}
 		} else {
@@ -1280,11 +1287,20 @@ func executeCmd(cmd string, usr *User, w *World) {
 	}
 }
 
+func removeItemFromSlice(i *Item, s []*Item) {
+
+	for n, item := range s {
+		if item == i {
+			s[n] = s[len(s)-1]
+			s = s[:len(s)-1]
+		}
+	}
+}
+
 func removeItemFromInventory(i *Item, u *User) {
 
 	for n, item := range u.char.inv {
 		if item == i {
-
 			u.char.inv[n] = u.char.inv[len(u.char.inv)-1]
 			u.char.inv = u.char.inv[:len(u.char.inv)-1]
 		}
@@ -1295,7 +1311,6 @@ func removeItemFromRoom(i *Item, r *Room) {
 
 	for n, item := range r.items {
 		if item == i {
-
 			r.items[n] = r.items[len(r.items)-1]
 			r.items = r.items[:len(r.items)-1]
 		}
@@ -1306,7 +1321,6 @@ func removeItemFromWorld(i *Item, w *World) {
 
 	for n, item := range w.items {
 		if item == i {
-
 			w.items[n] = w.items[len(w.items)-1]
 			w.items = w.items[:len(w.items)-1]
 		}
@@ -1370,7 +1384,7 @@ func (u *User) eqToItemArray() []*Item {
 	return equip
 }
 
-func tryToRemove(itm string, u *User) {
+func tryToRemove(itm string, u *User, w *World) {
 	eq := u.eqToItemArray()
 	tItem := &Item{}
 	fail := true
@@ -1380,12 +1394,12 @@ func tryToRemove(itm string, u *User) {
 		if len(i.name) < lenStr {
 			adjStr = len(i.name)
 		}
-		if strings.ToUpper(i.name[0:adjStr]) == strings.ToUpper(itm[0:adjStr]) {
+		if strings.EqualFold(i.name[0:adjStr], itm[0:adjStr]) {
 			tItem = i
 			fail = false
 		}
 	}
-	if fail == true {
+	if fail {
 		u.session.WriteLine("Could not remove " + itm)
 		return
 	}
@@ -1398,7 +1412,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your head.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their head.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their head.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1412,7 +1426,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your face.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their face.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their face.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1426,7 +1440,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your neck.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their neck.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their neck.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1440,7 +1454,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You unwrap a " + color("cyan", tItem.name) + " from around you.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " unwraps a " + color("cyan", tItem.name) + " from around them.")
+					clientOutputChan <- ClientOutput{usr, u.name + " unwraps a " + color("cyan", tItem.name) + " from around them.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1454,7 +1468,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your chest.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their chest.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their chest.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1468,7 +1482,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your back.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their back.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their back.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1482,7 +1496,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your left hand.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their left hand.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their left hand.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1496,7 +1510,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your right hand.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their right hand.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their right hand.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1510,7 +1524,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your waist.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their waist.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their waist.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1524,7 +1538,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your legs.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their legs.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their legs.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1538,7 +1552,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your feet.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their feet.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their feet.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1552,7 +1566,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your arms.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their arms.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their arms.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1566,7 +1580,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your left wrist.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their left wrist.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their left wrist.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1580,7 +1594,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your right wrist.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their right wrist.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their right wrist.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1594,7 +1608,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your hands.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their hands.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their hands.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1608,7 +1622,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your finger.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their finger.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their finger.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1622,7 +1636,7 @@ func tryToRemove(itm string, u *User) {
 			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your finger.")
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their finger.")
+					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their finger.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1633,16 +1647,16 @@ func tryToRemove(itm string, u *User) {
 	}
 }
 
-func tryToWear(i *Item, u *User) {
+func tryToWear(i *Item, u *User, w *World) {
 	switch i.slot {
 	case 1:
 		if u.char.eq.head == nil {
 			u.char.eq.head = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your head.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their head.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their head.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1652,10 +1666,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.face == nil {
 			u.char.eq.face = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your face.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their face.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their face.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1665,10 +1679,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.neck == nil {
 			u.char.eq.neck = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your neck.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their neck.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their neck.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1678,10 +1692,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.about == nil {
 			u.char.eq.about = i
 			u.session.WriteLine("You wrap a " + color("cyan", i.name) + " around yourself.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " wraps a " + color("cyan", i.name) + " around themself.")
+					clientOutputChan <- ClientOutput{usr, u.name + " wraps a " + color("cyan", i.name) + " around themself.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1691,10 +1705,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.chest == nil {
 			u.char.eq.chest = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your chest.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their chest.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their chest.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1704,10 +1718,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.back == nil {
 			u.char.eq.back = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your back.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their back.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their back.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1717,10 +1731,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.holdL == nil {
 			u.char.eq.holdL = i
 			u.session.WriteLine("You grab a " + color("cyan", i.name) + " in your left hand.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " grabs a " + color("cyan", i.name) + " in their left hand.")
+					clientOutputChan <- ClientOutput{usr, u.name + " grabs a " + color("cyan", i.name) + " in their left hand.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1730,10 +1744,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.holdR == nil {
 			u.char.eq.holdR = i
 			u.session.WriteLine("You grab a " + color("cyan", i.name) + " in your right hand.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " grabs a " + color("cyan", i.name) + " in their right hand.")
+					clientOutputChan <- ClientOutput{usr, u.name + " grabs a " + color("cyan", i.name) + " in their right hand.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1743,10 +1757,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.waist == nil {
 			u.char.eq.waist = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your waist.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their waist.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their waist.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1756,10 +1770,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.legs == nil {
 			u.char.eq.legs = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your legs.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their legs.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their legs.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1769,10 +1783,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.feet == nil {
 			u.char.eq.feet = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your feet.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their feet.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their feet.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1782,10 +1796,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.arms == nil {
 			u.char.eq.arms = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your arms.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their arms.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their arms.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1795,10 +1809,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.wristL == nil {
 			u.char.eq.wristL = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your left wrist.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their left wrist.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their left wrist.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1808,10 +1822,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.wristR == nil {
 			u.char.eq.wristR = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your right wrist.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their right wrist.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their right wrist.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1821,10 +1835,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.hands == nil {
 			u.char.eq.hands = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your hands.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their hands.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their hands.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1834,10 +1848,10 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.fingerL == nil {
 			u.char.eq.fingerL = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your finger.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their finger.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their finger.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
@@ -1847,91 +1861,18 @@ func tryToWear(i *Item, u *User) {
 		if u.char.eq.fingerR == nil {
 			u.char.eq.fingerR = i
 			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your finger.")
-			removeItemFromInventory(i, u)
+			removeItemFromSlice(i, u.char.inv)
 			for _, usr := range u.room.users {
 				if usr != u {
-					usr.session.WriteLine(u.name + " places a " + color("cyan", i.name) + " on their finger.")
+					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their finger.", &BroadcastEvent{}, w}
 				}
 			}
 		} else {
 			u.session.WriteLine("You already have something on your right finger.")
 		}
 	default:
-
+		fmt.Println("tryToWear() default case triggered, i.slot = " + fmt.Sprint(i.slot))
 	}
-}
-
-func getSingleInput(u *User, question string) string {
-
-	u.session.WriteLine(question)
-	n, err := u.session.conn.Read(u.buf)
-	input := ""
-	if err == nil {
-		input = string(u.buf[0 : n-2])
-	}
-	if err != nil {
-		u.session.WriteLine("Error: " + fmt.Sprint(err))
-	}
-	u.session.WriteLine("Received Input: " + input)
-	return input
-
-}
-
-var (
-	mu       sync.Mutex
-	tempSlot int
-	tempName string
-	tempDesc string
-)
-
-func getTempSlot() int {
-	mu.Lock()
-	me := tempSlot
-	mu.Unlock()
-	return me
-}
-func setTempSlot(me int) {
-	mu.Lock()
-	tempSlot = me
-	mu.Unlock()
-}
-func getTempName() string {
-	mu.Lock()
-	me := tempName
-	mu.Unlock()
-	return me
-}
-func setTempName(me string) {
-	mu.Lock()
-	tempName = me
-	mu.Unlock()
-}
-func getTempDesc() string {
-	mu.Lock()
-	me := tempDesc
-	mu.Unlock()
-	return me
-}
-func setTempDesc(me string) {
-	mu.Lock()
-	tempDesc = me
-	mu.Unlock()
-}
-
-func createItem(userCreator *User) *Item {
-
-	i := &Item{}
-
-	intVar, err := strconv.Atoi(getSingleInput(userCreator, "EQ slot?"))
-	if err == nil {
-
-		i = &Item{
-			name: getSingleInput(userCreator, "Name of Item?"),
-			desc: getSingleInput(userCreator, "Desc of Item?"),
-			slot: intVar,
-		}
-	}
-	return i
 }
 
 func (u *User) initChar() *Character {
@@ -2071,15 +2012,14 @@ func startServer(inputChannel chan ClientInput) error {
 	}
 }
 
-func startGameLoop(clientInputChannel <-chan ClientInput) {
+func startInputLoop(clientInputChannel <-chan ClientInput) {
 	//w := &World{}
 	for input := range clientInputChannel {
 
 		switch event := input.event.(type) {
 		case *InputEvent:
-			fmt.Println(fmt.Sprintf("%s: \"%s\"", input.user.name, event.msg))
-			executeCmd(event.msg, input.user, input.world)
-			input.user.session.WriteLine(input.user.getPrompt(input.user.room))
+			fmt.Printf("%s: \"%s\"\r\n", input.user.name, event.msg)
+			executeCmd(event.msg, input.user, input.world, clientOutputChan)
 
 		case *UserJoinedEvent:
 			fmt.Println("User Joined:", input.user.name)
@@ -2089,8 +2029,7 @@ func startGameLoop(clientInputChannel <-chan ClientInput) {
 			input.user.room.sendText(input.user)
 			for _, user := range input.world.users {
 				if user != input.user {
-					user.session.WriteLine(color("red", fmt.Sprintf("%s has joined!", input.user.name)))
-					user.session.WriteLine(user.getPrompt(user.room))
+					clientOutputChan <- ClientOutput{user, color("red", fmt.Sprintf("%s has joined!", input.user.name)), &BroadcastEvent{}, input.world}
 				}
 			}
 		case *UserLeftEvent:
@@ -2098,26 +2037,40 @@ func startGameLoop(clientInputChannel <-chan ClientInput) {
 			fmt.Println("User Left:", un)
 			for n, user := range input.world.users {
 				if user != input.user {
-					user.session.WriteLine(color("red", fmt.Sprintf("%s has left us!", un)))
-					user.session.WriteLine(user.getPrompt(user.room))
+					clientOutputChan <- ClientOutput{user, color("red", fmt.Sprintf("%s has left us!", un)), &BroadcastEvent{}, input.world}
 				}
 				if user == input.user {
 					removeUserFromRoom(user, user.room, input.world)
-					fmt.Println(fmt.Sprintf("%s removed from world index # %s", un, fmt.Sprint(n)))
+					fmt.Printf("%s removed from world index # %s\r\n", un, fmt.Sprint(n))
 					input.world.users[n] = input.world.users[len(input.world.users)-1]
 					input.world.users = input.world.users[:len(input.world.users)-1]
 				}
 			}
 		}
+		input.user.session.WriteLine(input.user.getPrompt(input.user.room))
+	}
+
+}
+
+func startOutputLoop(clientOutputChannel <-chan ClientOutput) {
+
+	for output := range clientOutputChannel {
+		switch output.event.(type) {
+		case *BroadcastEvent:
+			output.user.session.WriteLine(output.message)
+		}
+		output.user.session.WriteLine(output.user.getPrompt(output.user.room))
 	}
 }
 
+var clientOutputChan chan ClientOutput
+
 func main() {
-	ch := make(chan ClientInput)
-
-	go startGameLoop(ch)
-
-	err := startServer(ch)
+	chI := make(chan ClientInput)
+	clientOutputChan = make(chan ClientOutput)
+	go startInputLoop(chI)
+	go startOutputLoop(clientOutputChan)
+	err := startServer(chI)
 	if err != nil {
 		log.Fatal(err)
 	}
