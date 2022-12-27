@@ -490,7 +490,6 @@ func (u *User) returnEQ() {
 			u.session.WriteLine(color("cyan", itm.slotToString()+itm.name))
 		}
 	}
-	u.session.WriteLine(u.getPrompt(u.room))
 }
 
 func (r *Room) east(w *World) *Room {
@@ -604,7 +603,6 @@ func (r *Room) sendText(u *User) {
 			u.session.WriteLine(color("cyan", user.name+" is here."))
 		}
 	}
-	u.session.WriteLine(u.getPrompt(r))
 }
 
 func removeUserFromRoom(u *User, r *Room, w *World) {
@@ -651,25 +649,19 @@ func isMoveValid(u *User, dir string, w *World) {
 	case "through":
 		u.session.WriteLine(color("magenta", "You successfully move through the air, or was that not your goal?"))
 	}
-	u.session.WriteLine(u.getPrompt(u.room))
 	for _, usr := range u.room.users {
 		if usr != u {
 			switch dir {
 			case "north", "south", "east", "west":
 				usr.session.WriteLine(color("green", u.name+" slams their face into an invisible wall to the "+dir+"."))
-				usr.session.WriteLine(usr.getPrompt(usr.room))
 			case "up":
 				usr.session.WriteLine(color("green", u.name+" climbs an invisible staircase and falls flat on their face."))
-				usr.session.WriteLine(usr.getPrompt(usr.room))
 			case "down":
 				usr.session.WriteLine(color("green", u.name+" decends an imaginary staircase. Are we miming?"))
-				usr.session.WriteLine(usr.getPrompt(usr.room))
 			case "in", "out":
 				usr.session.WriteLine(color("green", u.name+" makes motions as if they're trying to crawl in or out of something..."))
-				usr.session.WriteLine(usr.getPrompt(usr.room))
 			case "through":
 				usr.session.WriteLine(color("green", u.name+" successfully penetrates the air. You clap."))
-				usr.session.WriteLine(usr.getPrompt(usr.room))
 			}
 		}
 	}
@@ -684,7 +676,6 @@ func moveUser(u *User, from *Room, to *Room, dir string) {
 			for _, usr := range to.users {
 
 				usr.session.WriteLine(color("green", u.name+" arrives from the "+getOppDir(dir)+"."))
-				usr.session.WriteLine(usr.getPrompt(usr.room))
 			}
 			to.addUser(u)
 			u.room = to
@@ -693,7 +684,6 @@ func moveUser(u *User, from *Room, to *Room, dir string) {
 		} else {
 
 			user.session.WriteLine(color("green", u.name+" heads "+dir+"."))
-			user.session.WriteLine(user.getPrompt(user.room))
 		}
 
 	}
@@ -795,17 +785,14 @@ func executeCmd(cmd string, usr *User, w *World) {
 		}
 		if len(usr.room.users) < 2 {
 			usr.session.WriteLine(color("magenta", "So uh, you talking to a ghost?"))
-			usr.session.WriteLine(usr.getPrompt(usr.room))
 		} else {
 			for _, user := range usr.room.users {
 				if user != usr {
 
 					user.session.WriteLine(color("yellow", fmt.Sprintf("%s says, \"%s.\"", usr.name, strings.TrimLeft(msg, " "))))
-					user.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 			usr.session.WriteLine(color("yellow", "You say, \""+strings.TrimLeft(msg, " ")+".\""))
-			usr.session.WriteLine(usr.getPrompt(usr.room))
 		}
 	case "yell":
 		args := strings.Split(cmd, " ")
@@ -857,10 +844,8 @@ func executeCmd(cmd string, usr *User, w *World) {
 		}
 		for _, recip := range recips {
 			recip.session.WriteLine(color("red", fmt.Sprintf("%s yells, \"%s.\"", usr.name, msg)))
-			recip.session.WriteLine(recip.getPrompt(recip.room))
 		}
 		usr.session.WriteLine(color("red", fmt.Sprintf("You yell, \"%s.\"", msg)))
-		usr.session.WriteLine(usr.getPrompt(usr.room))
 	case "shout":
 		args := strings.Split(cmd, " ")
 		msg := ""
@@ -871,11 +856,9 @@ func executeCmd(cmd string, usr *User, w *World) {
 		for _, recip := range w.users {
 			if recip != usr {
 				recip.session.WriteLine(color("blue", fmt.Sprintf("%s shouts, \"%s.\"", usr.name, msg)))
-				recip.session.WriteLine(recip.getPrompt(recip.room))
 			}
 		}
 		usr.session.WriteLine(color("blue", fmt.Sprintf("You shout, \"%s.\"", msg)))
-		usr.session.WriteLine(usr.getPrompt(usr.room))
 	case "l", "look":
 		if len(args) < 2 {
 			usr.room.sendText(usr)
@@ -907,20 +890,16 @@ func executeCmd(cmd string, usr *User, w *World) {
 				for _, ext := range usr.room.exits {
 					if ext.keyword == args[1] {
 						usr.session.WriteLine(color("white", ext.lookMsg))
-						usr.session.WriteLine(usr.getPrompt(usr.room))
 						return
 					}
 				}
 				usr.session.WriteLine(color("magenta", "Not much to see."))
-				usr.session.WriteLine(usr.getPrompt(usr.room))
 				return
 			case "":
 				usr.session.WriteLine(color("magenta", "What were you trying to look at?"))
-				usr.session.WriteLine(usr.getPrompt(usr.room))
 				return
 			default:
 				usr.session.WriteLine(color("magenta", "Not much to see."))
-				usr.session.WriteLine(usr.getPrompt(usr.room))
 				return
 			}
 		}
@@ -928,7 +907,6 @@ func executeCmd(cmd string, usr *User, w *World) {
 		for _, cmd := range w.cmnds {
 			usr.session.WriteLine(color("red", cmd.cmnd) + " - " + cmd.desc)
 		}
-		usr.session.WriteLine(usr.getPrompt(usr.room))
 		return
 	case "north", "south", "east", "west", "up", "down", "n", "s", "e", "w", "u", "d":
 		if len(args[0]) == 1 {
@@ -953,7 +931,6 @@ func executeCmd(cmd string, usr *User, w *World) {
 	case "go":
 		if len(args) < 2 {
 			usr.session.WriteLine(color("magenta", "Where do you want to go?"))
-			usr.session.WriteLine(usr.getPrompt(usr.room))
 			return
 		} else {
 			switch args[1] {
@@ -973,12 +950,10 @@ func executeCmd(cmd string, usr *User, w *World) {
 				return
 			default:
 				usr.session.WriteLine(color("magenta", fmt.Sprintf("You can't go '%s.'", args[1])))
-				usr.session.WriteLine(usr.getPrompt(usr.room))
 				return
 			}
 		}
 	case "":
-		usr.session.WriteLine(usr.getPrompt(usr.room))
 	case "eq", "equip":
 		usr.returnEQ()
 	case "create":
@@ -1127,7 +1102,6 @@ func executeCmd(cmd string, usr *User, w *World) {
 		usr.session.WriteLine(color("magenta", "hands   *Item //slot 15"))
 		usr.session.WriteLine(color("magenta", "fingerL *Item //slot 16"))
 		usr.session.WriteLine(color("magenta", "fingerR *Item //slot 17"))
-		usr.session.WriteLine(usr.getPrompt(usr.room))
 	case "drop":
 		if len(args) > 1 {
 			dropStr := ""
@@ -1232,7 +1206,6 @@ func executeCmd(cmd string, usr *User, w *World) {
 							usr.session.WriteLine(color("cyan", itm.slotToString()+itm.name))
 						}
 					}
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 					return
 				}
 			}
@@ -1245,7 +1218,6 @@ func executeCmd(cmd string, usr *User, w *World) {
 					fail = false
 					usr.session.WriteLine("You take a closer look at a " + color("cyan", i.name) + "...")
 					usr.session.WriteLine("    " + i.desc)
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 					return
 				}
 			}
@@ -1258,7 +1230,6 @@ func executeCmd(cmd string, usr *User, w *World) {
 					fail = false
 					usr.session.WriteLine("You take a closer look at a " + color("cyan", i.name) + "...")
 					usr.session.WriteLine("    " + i.desc)
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 					return
 				}
 			}
@@ -1272,14 +1243,12 @@ func executeCmd(cmd string, usr *User, w *World) {
 					fail = false
 					usr.session.WriteLine("You take a closer look at a " + color("cyan", i.name) + "...")
 					usr.session.WriteLine("    " + i.desc)
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 					return
 				}
 			}
 			if fail == true {
 				usr.session.WriteLine(color("magenta", "You see nothing with that name here."))
 			}
-			usr.session.WriteLine(usr.getPrompt(usr.room))
 		} else {
 			usr.session.WriteLine(color("magenta", "What are you trying to examine?"))
 		}
@@ -1307,7 +1276,6 @@ func executeCmd(cmd string, usr *User, w *World) {
 		emoteHandler(args, usr, w)
 	default:
 		usr.session.WriteLine(color("magenta", fmt.Sprintf("'%s' is not recognized as a command.", args[0])))
-		usr.session.WriteLine(usr.getPrompt(usr.room))
 		return
 	}
 }
@@ -1431,7 +1399,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their head.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1446,7 +1413,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their face.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1461,7 +1427,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their neck.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1476,7 +1441,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " unwraps a " + color("cyan", tItem.name) + " from around them.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1491,7 +1455,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their chest.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1506,7 +1469,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their back.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1521,7 +1483,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their left hand.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1536,7 +1497,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their right hand.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1551,7 +1511,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their waist.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1566,7 +1525,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their legs.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1581,7 +1539,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their feet.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1596,7 +1553,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their arms.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1611,7 +1567,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their left wrist.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1626,7 +1581,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their right wrist.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1641,7 +1595,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their hands.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1656,7 +1609,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their finger.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -1671,7 +1623,6 @@ func tryToRemove(itm string, u *User) {
 			for _, usr := range u.room.users {
 				if usr != u {
 					usr.session.WriteLine(u.name + " removes a " + color("cyan", tItem.name) + " from their finger.")
-					usr.session.WriteLine(usr.getPrompt(usr.room))
 				}
 			}
 		} else {
@@ -2128,6 +2079,7 @@ func startGameLoop(clientInputChannel <-chan ClientInput) {
 		case *InputEvent:
 			fmt.Println(fmt.Sprintf("%s: \"%s\"", input.user.name, event.msg))
 			executeCmd(event.msg, input.user, input.world)
+			input.user.session.WriteLine(input.user.getPrompt(input.user.room))
 
 		case *UserJoinedEvent:
 			fmt.Println("User Joined:", input.user.name)
