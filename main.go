@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -120,9 +121,23 @@ type Character struct {
 }
 
 type Item struct {
+	id   int
 	name string
 	desc string
 	slot string
+	loc  Location
+}
+
+type Location interface {
+	getLocation() Location
+}
+
+func (u *User) getLocation() Location {
+	return u
+}
+
+func (r *Room) getLocation() Location {
+	return r
 }
 
 type Session struct {
@@ -411,6 +426,12 @@ func (w *World) initEQList() {
 	w.eqList = append(w.eqList, handsSlot)
 	w.eqList = append(w.eqList, fingerLSlot)
 	w.eqList = append(w.eqList, fingerRSlot)
+}
+
+func (w *World) initItems() {
+
+	w.items = append(w.items, &Item{id: 1, name: "a leather cap", desc: "It's as plain as it gets, covers the melon, provides minor protection.", slot: headSlot})
+	//w.items = append(w.items, &Item{2, "", "", faceSlot})
 }
 
 func emoteHandler(input []string, usr *User, w *World) {
@@ -1016,10 +1037,18 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			//slot, err := strconv.Atoi(flds[2])
 			//if err == nil {
 			fail := false
+			id := 0
+			for _, i := range w.items {
+				if i.id > id {
+					id = i.id
+				}
+			}
 			i := &Item{
+				id:   id + 1,
 				name: name,
 				desc: desc,
 				slot: slot,
+				loc:  usr.getLocation(),
 			}
 			for _, itm := range w.items {
 				if strings.EqualFold(itm.name, i.name) {
@@ -1042,8 +1071,20 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 		}
 	case "listitems":
 		for _, itm := range w.items {
-			usr.session.WriteLine(itm.name + " - " + itm.desc + " - " + fmt.Sprint(itm.slot))
+			if itm.loc != nil {
+				r, room := itm.loc.(*Room)
+				if room {
+					usr.session.WriteLine(fmt.Sprint(itm.id) + " - " + itm.name + " - " + itm.desc + " - " + itm.slot + " - " + r.name)
+				}
+				u, user := itm.loc.(*User)
+				if user {
+					usr.session.WriteLine(fmt.Sprint(itm.id) + " - " + itm.name + " - " + itm.desc + " - " + itm.slot + " - " + u.name)
+				}
+			} else {
+				usr.session.WriteLine(fmt.Sprint(itm.id) + " - " + itm.name + " - " + itm.desc + " - " + itm.slot + " - nil")
+			}
 		}
+		usr.session.WriteLine(fmt.Sprintf("        %s total length of world.items slice", fmt.Sprint(len(w.items))))
 	case "give":
 		giveStr := ""
 		for i := 1; i < len(args); i++ {
@@ -1051,14 +1092,48 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 		}
 		if len(args) > 1 {
 			fail := true
-			for _, itm := range w.items {
-				if strings.EqualFold(itm.name, strings.TrimLeft(giveStr, " ")) {
-					usr.char.inv = append(usr.char.inv, itm)
-					usr.session.WriteLine("You have received " + itm.name)
-					fail = false
+			args[1] = strings.TrimLeft(args[1], " ")
+			n, err := strconv.Atoi(args[1])
+			if err != nil {
+				lenStr := len(args[1])
+				for _, itm := range w.items {
+					adjStr := lenStr
+					if len(itm.name) < adjStr {
+						adjStr = len(itm.name)
+					}
+					if strings.EqualFold(itm.name[0:adjStr], giveStr[0:adjStr]) {
+						usr.char.inv = append(usr.char.inv, itm)
+						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s'", args[1], itm.name))
+						itm.loc = usr.getLocation()
+						fail = false
+					}
+
 				}
-				if !fail {
-					break
+			} else {
+				for _, itm := range w.items {
+					if itm.id == n {
+						fail = false
+						id := 0
+						for _, ii := range w.items {
+							if ii.id > id {
+								id = ii.id
+							}
+						}
+						item := new(Item)
+
+						item.id = id + 1
+						item.name = itm.name
+						item.desc = itm.desc
+						item.slot = itm.slot
+						item.loc = usr.getLocation()
+						usr.char.inv = append(usr.char.inv, item)
+						//removeItemFromWorld(itm, w)
+						//w.items = append(w.items, itm)
+						w.items = append(w.items, item)
+						//itm.loc = usr.getLocation()
+						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s'", fmt.Sprint(n), itm.name))
+						return
+					}
 				}
 			}
 			if fail {
@@ -1153,23 +1228,23 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			usr.session.WriteLine("What are you trying to remove?")
 		}
 	case "slots":
-		usr.session.WriteLine(color("magenta", "head    *Item //slot 1"))
-		usr.session.WriteLine(color("magenta", "face    *Item //slot 2"))
-		usr.session.WriteLine(color("magenta", "neck    *Item //slot 3"))
-		usr.session.WriteLine(color("magenta", "about   *Item //slot 4"))
-		usr.session.WriteLine(color("magenta", "chest   *Item //slot 5"))
-		usr.session.WriteLine(color("magenta", "back    *Item //slot 6"))
-		usr.session.WriteLine(color("magenta", "holdL   *Item //slot 7"))
-		usr.session.WriteLine(color("magenta", "holdR   *Item //slot 8"))
-		usr.session.WriteLine(color("magenta", "waist   *Item //slot 9"))
-		usr.session.WriteLine(color("magenta", "legs    *Item //slot 10"))
-		usr.session.WriteLine(color("magenta", "feet    *Item //slot 11"))
-		usr.session.WriteLine(color("magenta", "arms    *Item //slot 12"))
-		usr.session.WriteLine(color("magenta", "wristL  *Item //slot 13"))
-		usr.session.WriteLine(color("magenta", "wristR  *Item //slot 14"))
-		usr.session.WriteLine(color("magenta", "hands   *Item //slot 15"))
-		usr.session.WriteLine(color("magenta", "fingerL *Item //slot 16"))
-		usr.session.WriteLine(color("magenta", "fingerR *Item //slot 17"))
+		usr.session.WriteLine(color("magenta", headSlot))
+		usr.session.WriteLine(color("magenta", faceSlot))
+		usr.session.WriteLine(color("magenta", neckSlot))
+		usr.session.WriteLine(color("magenta", aboutSlot))
+		usr.session.WriteLine(color("magenta", chestSlot))
+		usr.session.WriteLine(color("magenta", backSlot))
+		usr.session.WriteLine(color("magenta", holdLSlot))
+		usr.session.WriteLine(color("magenta", holdRSlot))
+		usr.session.WriteLine(color("magenta", waistSlot))
+		usr.session.WriteLine(color("magenta", legsSlot))
+		usr.session.WriteLine(color("magenta", feetSlot))
+		usr.session.WriteLine(color("magenta", armsSlot))
+		usr.session.WriteLine(color("magenta", wristLSlot))
+		usr.session.WriteLine(color("magenta", wristRSlot))
+		usr.session.WriteLine(color("magenta", handsSlot))
+		usr.session.WriteLine(color("magenta", fingerLSlot))
+		usr.session.WriteLine(color("magenta", fingerRSlot))
 	case "drop":
 		if len(args) > 1 {
 			dropStr := ""
@@ -1187,6 +1262,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 				if strings.EqualFold(i.name[0:adjLen], dropStr[0:adjLen]) {
 					fail = false
 					usr.room.items = append(usr.room.items, i)
+					i.loc = usr.room.getLocation()
 					removeItemFromInventory(i, usr)
 					for _, u := range usr.room.users {
 						if u != usr {
@@ -1225,6 +1301,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 					fail = false
 					removeItemFromRoom(itm, usr.room)
 					usr.char.inv = append(usr.char.inv, itm)
+					itm.loc = usr.getLocation()
 					for _, u := range usr.room.users {
 						if u != usr {
 							eventCh <- ClientOutput{u, usr.name + " picks up a " + color("cyan", itm.name) + " off the ground here.", &BroadcastEvent{}, w}
@@ -1299,6 +1376,10 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 					fail = false
 					usr.session.WriteLine("You take a closer look at a " + color("cyan", i.name) + "...")
 					usr.session.WriteLine("    " + i.desc)
+					r, room := i.loc.(*Room)
+					if room {
+						usr.session.WriteLine("    " + fmt.Sprint(i.id) + " - " + i.name + " - " + i.desc + " - " + i.slot + " - " + r.name)
+					}
 					return
 				}
 			}
@@ -1311,6 +1392,10 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 					fail = false
 					usr.session.WriteLine("You take a closer look at a " + color("cyan", i.name) + "...")
 					usr.session.WriteLine("    " + i.desc)
+					u, user := i.loc.(*User)
+					if user {
+						usr.session.WriteLine("    " + fmt.Sprint(i.id) + " - " + i.name + " - " + i.desc + " - " + i.slot + " - " + u.name)
+					}
 					return
 				}
 			}
@@ -1407,555 +1492,6 @@ func removeItemFromWorld(i *Item, w *World) {
 		}
 	}
 }
-
-/*
-func (u *User) eqToItemArray() []*Item {
-	equip := make([]*Item, 0)
-
-	if eq := u.char.eq.Head; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Face; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Neck; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.About; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Chest; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Back; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.HoldL; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.HoldR; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Waist; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Legs; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Feet; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Arms; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.WristL; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.WristR; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Hands; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.FingerL; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.FingerR; eq != nil {
-		equip = append(equip, eq)
-	}
-	return equip
-}
-
-func tryToRemove(itm string, u *User, w *World) {
-	eq := u.eqToItemArray()
-	tItem := &Item{}
-	fail := true
-	lenStr := len(itm)
-	for _, i := range eq {
-		adjStr := lenStr
-		if len(i.name) < lenStr {
-			adjStr = len(i.name)
-		}
-		if strings.EqualFold(i.name[0:adjStr], itm[0:adjStr]) {
-			tItem = i
-			fail = false
-		}
-	}
-	if fail {
-		u.session.WriteLine("Could not remove " + itm)
-		return
-	}
-	switch tItem.slot {
-	case 1:
-		if u.char.eq.Head != nil {
-			itm := u.char.eq.Head
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.Head = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your head.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their head.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 1).")
-		}
-	case 2:
-		if u.char.eq.Face != nil {
-			itm := u.char.eq.Face
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.Face = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your face.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their face.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 2).")
-		}
-	case 3:
-		if u.char.eq.Neck != nil {
-			itm := u.char.eq.Neck
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.Neck = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your neck.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their neck.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 3).")
-		}
-	case 4:
-		if u.char.eq.About != nil {
-			itm := u.char.eq.About
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.About = nil
-			u.session.WriteLine("You unwrap a " + color("cyan", tItem.name) + " from around you.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " unwraps a " + color("cyan", tItem.name) + " from around them.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 4).")
-		}
-	case 5:
-		if u.char.eq.Chest != nil {
-			itm := u.char.eq.Chest
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.Chest = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your chest.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their chest.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 5).")
-		}
-	case 6:
-		if u.char.eq.Back != nil {
-			itm := u.char.eq.Back
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.Back = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your back.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their back.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 6).")
-		}
-	case 7:
-		if u.char.eq.HoldL != nil {
-			itm := u.char.eq.HoldL
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.HoldL = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your left hand.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their left hand.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 7).")
-		}
-	case 8:
-		if u.char.eq.HoldR != nil {
-			itm := u.char.eq.HoldR
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.HoldR = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your right hand.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their right hand.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 8).")
-		}
-	case 9:
-		if u.char.eq.Waist != nil {
-			itm := u.char.eq.Waist
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.Waist = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your waist.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their waist.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 9).")
-		}
-	case 10:
-		if u.char.eq.Legs != nil {
-			itm := u.char.eq.Legs
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.Legs = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your legs.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their legs.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 10).")
-		}
-	case 11:
-		if u.char.eq.Feet != nil {
-			itm := u.char.eq.Feet
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.Feet = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your feet.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their feet.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 11).")
-		}
-	case 12:
-		if u.char.eq.Arms != nil {
-			itm := u.char.eq.Arms
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.Arms = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your arms.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their arms.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 12).")
-		}
-	case 13:
-		if u.char.eq.WristL != nil {
-			itm := u.char.eq.WristL
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.WristL = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your left wrist.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their left wrist.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 13).")
-		}
-	case 14:
-		if u.char.eq.WristR != nil {
-			itm := u.char.eq.WristR
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.WristR = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your right wrist.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their right wrist.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 14).")
-		}
-	case 15:
-		if u.char.eq.Hands != nil {
-			itm := u.char.eq.Hands
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.Hands = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your hands.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their hands.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 15).")
-		}
-	case 16:
-		if u.char.eq.FingerL != nil {
-			itm := u.char.eq.FingerL
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.FingerL = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your finger.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their finger.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 16).")
-		}
-	case 17:
-		if u.char.eq.FingerR != nil {
-			itm := u.char.eq.FingerR
-			u.char.inv = append(u.char.inv, itm)
-			u.char.eq.FingerR = nil
-			u.session.WriteLine("You remove a " + color("cyan", tItem.name) + " from your finger.")
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " removes a " + color("cyan", tItem.name) + " from their finger.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("This should not be possible - tryToRemove(case 17).")
-		}
-	default:
-		fmt.Println("default case called on tryToRemove : " + u.name)
-	}
-}
-
-func tryToWear(i *Item, u *User, w *World) {
-	switch i.slot {
-	case 1:
-		if u.char.eq.Head == nil {
-			u.char.eq.Head = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your head.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their head.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your head.")
-		}
-	case 2:
-		if u.char.eq.Face == nil {
-			u.char.eq.Face = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your face.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their face.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your face.")
-		}
-	case 3:
-		if u.char.eq.Neck == nil {
-			u.char.eq.Neck = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your neck.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their neck.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your neck.")
-		}
-	case 4:
-		if u.char.eq.About == nil {
-			u.char.eq.About = i
-			u.session.WriteLine("You wrap a " + color("cyan", i.name) + " around yourself.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " wraps a " + color("cyan", i.name) + " around themself.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your head.")
-		}
-	case 5:
-		if u.char.eq.Chest == nil {
-			u.char.eq.Chest = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your chest.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their chest.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your chest.")
-		}
-	case 6:
-		if u.char.eq.Back == nil {
-			u.char.eq.Back = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your back.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their back.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your back.")
-		}
-	case 7:
-		if u.char.eq.HoldL == nil {
-			u.char.eq.HoldL = i
-			u.session.WriteLine("You grab a " + color("cyan", i.name) + " in your left hand.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " grabs a " + color("cyan", i.name) + " in their left hand.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something in your left hand.")
-		}
-	case 8:
-		if u.char.eq.HoldR == nil {
-			u.char.eq.HoldR = i
-			u.session.WriteLine("You grab a " + color("cyan", i.name) + " in your right hand.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " grabs a " + color("cyan", i.name) + " in their right hand.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something in your right hand.")
-		}
-	case 9:
-		if u.char.eq.Waist == nil {
-			u.char.eq.Waist = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your waist.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their waist.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your waist.")
-		}
-	case 10:
-		if u.char.eq.Legs == nil {
-			u.char.eq.Legs = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your legs.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their legs.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your legs.")
-		}
-	case 11:
-		if u.char.eq.Feet == nil {
-			u.char.eq.Feet = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your feet.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their feet.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your feet.")
-		}
-	case 12:
-		if u.char.eq.Arms == nil {
-			u.char.eq.Arms = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your arms.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their arms.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your arms.")
-		}
-	case 13:
-		if u.char.eq.WristL == nil {
-			u.char.eq.WristL = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your left wrist.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their left wrist.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your left wrist.")
-		}
-	case 14:
-		if u.char.eq.WristR == nil {
-			u.char.eq.WristR = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your right wrist.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their right wrist.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your right wrist.")
-		}
-	case 15:
-		if u.char.eq.Hands == nil {
-			u.char.eq.Hands = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your hands.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their hands.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your hands.")
-		}
-	case 16:
-		if u.char.eq.FingerL == nil {
-			u.char.eq.FingerL = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your finger.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their finger.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your left finger.")
-		}
-	case 17:
-		if u.char.eq.FingerR == nil {
-			u.char.eq.FingerR = i
-			u.session.WriteLine("You place a " + color("cyan", i.name) + " on your finger.")
-			removeItemFromSlice(i, u.char.inv)
-			for _, usr := range u.room.users {
-				if usr != u {
-					clientOutputChan <- ClientOutput{usr, u.name + " places a " + color("cyan", i.name) + " on their finger.", &BroadcastEvent{}, w}
-				}
-			}
-		} else {
-			u.session.WriteLine("You already have something on your right finger.")
-		}
-	default:
-		fmt.Println("tryToWear() default case triggered, i.slot = " + fmt.Sprint(i.slot))
-	}
-}*/
 
 func (u *User) initChar() *Character {
 	char := &Character{
@@ -2072,6 +1608,7 @@ func startServer(inputChannel chan ClientInput) error {
 	w.items = []*Item{}
 	w.loadEmotes()
 	w.initEQList()
+	w.initItems()
 	ln, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		return err
