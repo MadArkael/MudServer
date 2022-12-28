@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -126,6 +127,7 @@ type Item struct {
 	desc string
 	slot string
 	loc  Location
+	uID  string
 }
 
 type Location interface {
@@ -654,14 +656,29 @@ func getRoomByID(id int, w *World) *Room {
 func (r *Room) sendText(u *User) {
 	u.session.WriteLine(color("blue", r.name))
 	u.session.WriteLine(color("blue", "   "+r.desc))
-	for _, itm := range r.items {
-		u.session.WriteLine("A " + color("cyan", itm.name) + " is lying here.")
+	itmMap := returnItemCountMap(r.items)
+	for itm, cnt := range itmMap {
+		if cnt > 1 {
+			u.session.WriteLine("A " + color("cyan", itm) + " (" + color("red", fmt.Sprint(cnt)) + ") is lying here.")
+		} else {
+			u.session.WriteLine("A " + color("cyan", itm) + " is lying here.")
+		}
 	}
 	for _, user := range r.users {
 		if user != u {
 			u.session.WriteLine(color("cyan", user.name+" is here."))
 		}
 	}
+}
+
+func returnItemCountMap(items []*Item) map[string]int {
+	itemCounts := make(map[string]int)
+	for _, item := range items {
+
+		itemCounts[item.name]++
+
+	}
+	return itemCounts
 }
 
 func removeUserFromRoom(u *User, r *Room, w *World) {
@@ -1121,17 +1138,18 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						}
 						item := new(Item)
 
-						item.id = id + 1
+						item.id = itm.id
 						item.name = itm.name
 						item.desc = itm.desc
 						item.slot = itm.slot
 						item.loc = usr.getLocation()
+						item.uID = time.Now().Format(time.RFC3339)
 						usr.char.inv = append(usr.char.inv, item)
 						//removeItemFromWorld(itm, w)
 						//w.items = append(w.items, itm)
 						w.items = append(w.items, item)
 						//itm.loc = usr.getLocation()
-						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s'", fmt.Sprint(n), itm.name))
+						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s' - uID: %s", fmt.Sprint(n), itm.name, item.uID))
 						return
 					}
 				}
@@ -1147,8 +1165,14 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 		if len(usr.char.inv) == 0 {
 			usr.session.WriteLine(color("cyan", "    nothing!"))
 		} else {
-			for _, i := range usr.char.inv {
-				usr.session.WriteLine(color("cyan", "    "+i.name))
+			iMap := returnItemCountMap(usr.char.inv)
+			for i, cnt := range iMap {
+				if cnt > 1 {
+					usr.session.WriteLine(color("cyan", "    "+i) + " (" + color("red", fmt.Sprint(cnt)) + ")")
+				} else {
+					usr.session.WriteLine(color("cyan", "    "+i))
+				}
+
 			}
 		}
 	case "wear", "waer":
