@@ -284,6 +284,10 @@ func (w *World) loadHelp() {
 			cmnd: "emotes",
 			desc: "lists available emotes",
 		},
+		{
+			cmnd: "snatch <item id> <instance #>",
+			desc: "gives you instance of item no matter where its at.",
+		},
 	}
 }
 
@@ -432,7 +436,7 @@ func (w *World) initEQList() {
 
 func (w *World) initItems() {
 
-	w.items = append(w.items, &Item{id: 1, name: "a leather cap", desc: "It's as plain as it gets, covers the melon, provides minor protection.", slot: headSlot})
+	w.items = append(w.items, &Item{id: 1, name: "a leather cap", desc: "It's as plain as it gets, covers the melon, provides minor protection.", slot: headSlot, uID: time.Now().Format(time.RFC3339)})
 	//w.items = append(w.items, &Item{2, "", "", faceSlot})
 }
 
@@ -485,72 +489,6 @@ func emoteHandler(input []string, usr *User, w *World) {
 		}
 	}
 }
-
-/*
-func (u *User) returnEQ() {
-
-	equip := make([]*Item, 0)
-
-	if eq := u.char.eq.Head; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Face; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Neck; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.About; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Chest; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Back; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.HoldL; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.HoldR; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Waist; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Legs; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Feet; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Arms; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.WristL; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.WristR; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.Hands; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.FingerL; eq != nil {
-		equip = append(equip, eq)
-	}
-	if eq := u.char.eq.FingerR; eq != nil {
-		equip = append(equip, eq)
-	}
-	u.session.WriteLine("You are wearing:")
-	if len(equip) == 0 {
-		u.session.WriteLine(color("cyan", " ...Nothing!"))
-	} else {
-		for _, itm := range equip {
-			u.session.WriteLine(color("cyan", itm.slotToString()+itm.name))
-		}
-	}
-}*/
 
 func (r *Room) east(w *World) *Room {
 
@@ -659,9 +597,9 @@ func (r *Room) sendText(u *User) {
 	itmMap := returnItemCountMap(r.items)
 	for itm, cnt := range itmMap {
 		if cnt > 1 {
-			u.session.WriteLine("A " + color("cyan", itm) + " (" + color("red", fmt.Sprint(cnt)) + ") is lying here.")
+			u.session.WriteLine(color("cyan", itm) + " (" + color("red", fmt.Sprint(cnt)) + ") is lying here.")
 		} else {
-			u.session.WriteLine("A " + color("cyan", itm) + " is lying here.")
+			u.session.WriteLine(color("cyan", itm) + " is lying here.")
 		}
 	}
 	for _, user := range r.users {
@@ -1065,7 +1003,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 				name: name,
 				desc: desc,
 				slot: slot,
-				loc:  usr.getLocation(),
+				uID:  time.Now().Format(time.RFC3339),
 			}
 			for _, itm := range w.items {
 				if strings.EqualFold(itm.name, i.name) {
@@ -1107,6 +1045,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 		for i := 1; i < len(args); i++ {
 			giveStr = giveStr + " " + args[i]
 		}
+		//need to update this section with world appending etc.
 		if len(args) > 1 {
 			fail := true
 			args[1] = strings.TrimLeft(args[1], " ")
@@ -1452,13 +1391,45 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			}
 		}
 		usr.session.WriteLine("Available Emotes: " + output)
-	case "test":
-		/*itm := ""
-		for i := 1; i < len(args); i++ {
-			itm = itm + " " + args[i]
+	case "snatch":
+		if len(args) < 3 {
+			return
 		}
-		itm = strings.TrimLeft(itm, " ")
-		findAndRemoveItem(*usr.char.eq, itm, usr)*/
+		args[1] = strings.TrimLeft(args[1], " ")
+		args[2] = strings.TrimLeft(args[2], " ")
+		n, err := strconv.Atoi(args[1])
+		n2, err2 := strconv.Atoi(args[2])
+		inst := 0
+		for _, itm := range w.items {
+			if err == nil && err2 == nil {
+				if itm.id == n {
+					inst++
+					if inst == n2+1 {
+						if lc, ok := itm.loc.(*Room); ok {
+							removeItemFromRoom(itm, lc)
+							usr.session.WriteLine(fmt.Sprintf("You snatched %s from room: %s", color("cyan", itm.name), color("red", lc.name)))
+							for _, u := range lc.users {
+								clientOutputChan <- ClientOutput{u, fmt.Sprintf("%s whisked %s away from the ground here!", color("red", usr.name), color("cyan", itm.name)), &BroadcastEvent{}, w}
+							}
+							usr.char.inv = append(usr.char.inv, itm)
+							itm.loc = usr.getLocation()
+							return
+						}
+						if lc, ok := itm.loc.(*User); ok {
+							removeItemFromInventory(itm, lc)
+							usr.char.inv = append(usr.char.inv, itm)
+							usr.session.WriteLine(fmt.Sprintf("You stole %s from %s!", color("cyan", itm.name), color("red", lc.name)))
+							clientOutputChan <- ClientOutput{lc, fmt.Sprintf("%s stole %s from your inventory!", color("red", usr.name), color("cyan", itm.name)), &BroadcastEvent{}, w}
+							itm.loc = usr.getLocation()
+							return
+						}
+					}
+				}
+			} else {
+				usr.session.WriteLine("args 1 and 2 need to be integers")
+				return
+			}
+		}
 	case "nod":
 		emoteHandler(args, usr, w)
 	case "flail":
