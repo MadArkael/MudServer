@@ -330,7 +330,7 @@ func createItem(userCreator *User) *Item {
 	}
 	return i
 }
-
+//blocks input from other users. Need to learn how to suspend main user thread to put them on a temporary one to use functions like this
 func getSingleInput(u *User, question string) string {
 
 	u.session.WriteLine(question)
@@ -345,4 +345,146 @@ func getSingleInput(u *User, question string) string {
 	u.session.WriteLine("Received Input: " + input)
 	return input
 
+}
+
+// find successfully iterates through the equipment struct and can return an item, however item pointers in equipment struct need to be removed so that its fields are addressable for
+// the set function of field to work which causes problems as everything is designed up to this point around pointers
+
+func findAndRemoveItem(equipment Equipment, itemName string, u *User) *Item {
+	v := reflect.ValueOf(equipment)
+	lenStr := len(itemName)
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		if field.Kind() == reflect.Ptr {
+			item := field.Interface().(*Item)
+			if item != nil {
+				if len(item.Name) < lenStr {
+					lenStr = len(item.Name)
+				}
+				if item != nil && strings.EqualFold(item.Name[0:lenStr], itemName[0:lenStr]) {
+					fmt.Printf("reflect found %s from equipment struct.\r\n", item.Name)
+					field.Set(reflect.ValueOf(nil))
+					u.char.inv = append(u.char.inv, item)
+					return item
+				}
+			}
+		}
+	}
+	fmt.Printf("reflect returned nil. " + itemName + "\r\n")
+	return nil
+}
+
+
+func EquipItem(equipment *Equipment, item *Item) error {
+	v := reflect.ValueOf(equipment).Elem()
+	field := v.FieldByName(item.Slot)
+	if !field.IsValid() || field.Kind() != reflect.Ptr {
+		return fmt.Errorf("invalid slot: %s", item.Slot)
+	}
+	field.Set(reflect.ValueOf(item))
+	return nil
+}
+
+func RemoveItem(equipment *Equipment, item *Item) error {
+	v := reflect.ValueOf(equipment).Elem()
+	field := v.FieldByName(item.Slot)
+	if !field.IsValid() || field.Kind() != reflect.Ptr {
+		return fmt.Errorf("invalid slot: %s", item.Slot)
+	}
+	currentItem := field.Interface().(*Item)
+	if currentItem != item {
+		return fmt.Errorf("item not equipped in slot: %s", item.Slot)
+	}
+	field.Set(reflect.ValueOf(nil))
+	item.Slot = ""
+	return nil
+}
+
+type ItemLocation struct {
+    ID       string
+    Location *Location
+}
+
+type Location struct {
+    Name string
+}
+
+type ItemHashTable struct {
+    table []*ItemLocation
+    size  int
+}
+
+// Hash function to map an item ID to an index in the underlying array
+func (h *ItemHashTable) hash(key string) int {
+    hash := 0
+    for i := 0; i < len(key); i++ {
+        hash += int(key[i])
+    }
+    return hash % h.size
+}
+
+// Method to insert an item location into the hash table
+func (h *ItemHashTable) Insert(key string, value *Location) {
+    index := h.hash(key)
+    h.table[index] = &ItemLocation{ID: key, Location: value}
+}
+
+// Method to look up the location of an item by its ID
+func (h *ItemHashTable) Lookup(key string) (*Location, bool) {
+    index := h.hash(key)
+    itemLocation := h.table[index]
+    if itemLocation != nil && itemLocation.ID == key {
+        return itemLocation.Location, true
+    }
+    return nil, false
+}
+
+// Create a new hash table with a size of 10
+itemLocations := &ItemHashTable{make([]*ItemLocation, 10), 10}
+
+// Insert some item locations into the hash table
+itemLocations.Insert("item1", &Location{Name: "Room 1"})
+itemLocations.Insert("item2", &Location{Name: "Room 2"})
+itemLocations.Insert("item3", &Location{Name: "Room 2"})
+itemLocations.Insert("item4", &Location{Name: "Room 3"})
+
+// Look up the location of an item by its ID
+itemID := "item2"
+location, ok := itemLocations.Lookup(itemID)
+if ok {
+    fmt.Println(location.Name)  // Output: "Room 2"
+} else {
+    fmt.Println("Item not found")
+}
+
+func GetItemsInLocation(location *Location, itemLocations *ItemHashTable) []*ItemLocation {
+    items := []*ItemLocation{}
+    for i := 0; i < itemLocations.size; i++ {
+        itemLocation := itemLocations.table[i]
+        if itemLocation != nil && itemLocation.Location.Name == location.Name {
+            items = append(items, itemLocation)
+        }
+    }
+    return items
+}
+
+room2 := &Location{Name: "Room 2"}
+itemsInRoom2 := GetItemsInLocation(room2, itemLocations)
+
+for _, item := range itemsInRoom2 {
+    fmt.Println(item.ID)
+}
+
+type LocationIndex struct {
+    index map[string][]string
+}
+
+// Method to add an item to the index
+func (l *LocationIndex) AddItem(location string, itemID string) {
+    l.index[location] = append(l.index[location], itemID)
+}
+
+// Method to retrieve all of the items in a specific location
+func (l *LocationIndex) GetItemsInLocation(location string) []string {
+    return l.index[location]
 }
