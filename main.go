@@ -81,10 +81,10 @@ type ClientInput struct {
 }
 
 type ClientOutput struct {
-	user    *User
-	message string
-	event   interface{}
-	world   *World
+	user  *User
+	msg   string
+	event interface{}
+	world *World
 }
 
 type User struct {
@@ -128,11 +128,6 @@ type Item struct {
 	slot string
 	loc  Location
 	uID  string
-}
-
-type ItemContainer struct {
-	itm        *Item
-	instanceNo int
 }
 
 type Location interface {
@@ -1038,7 +1033,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 				slot: slot,
 				uID:  time.Now().Format(time.RFC3339),
 			}
-			for key, _ := range w.items {
+			for key := range w.items {
 				if strings.EqualFold(key, i.name) {
 					fail = true
 					usr.session.WriteLine("Item name exists in world.")
@@ -1516,6 +1511,12 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			}
 		}
 	case "test":
+		i, err := getItem(w.items, "a leather cap", 2)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Loc: %s, Address: %p", fmt.Sprint(i.id), i.name, i.loc.getName(), i))
+		}
 	case "nod":
 		emoteHandler(args, usr, w)
 	case "flail":
@@ -1669,7 +1670,7 @@ func startOutputLoop(clientOutputChannel <-chan ClientOutput) {
 	for output := range clientOutputChannel {
 		switch output.event.(type) {
 		case *BroadcastEvent:
-			output.user.session.WriteLine(output.message)
+			output.user.session.WriteLine(output.msg)
 		}
 		output.user.session.WriteLine(output.user.getPrompt(output.user.room))
 	}
