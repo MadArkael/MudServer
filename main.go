@@ -130,16 +130,29 @@ type Item struct {
 	uID  string
 }
 
+type ItemContainer struct {
+	itm        *Item
+	instanceNo int
+}
+
 type Location interface {
 	getLocation() Location
+	getName() string
 }
 
 func (u *User) getLocation() Location {
 	return u
 }
+func (u *User) getName() string {
+	return u.name
+}
 
 func (r *Room) getLocation() Location {
 	return r
+}
+
+func (r *Room) getName() string {
+	return r.name
 }
 
 type Session struct {
@@ -147,12 +160,13 @@ type Session struct {
 }
 
 type World struct {
-	users  []*User
-	rooms  []*Room
-	cmnds  []*Command
-	items  []*Item
-	emotes []*Emote
-	eqList []string
+	users    []*User
+	rooms    []*Room
+	cmnds    []*Command
+	items    []*Item
+	emotes   []*Emote
+	eqList   []string
+	testIMap map[string]map[int]*Item
 }
 
 // todo load data from disk
@@ -257,7 +271,7 @@ func (w *World) loadHelp() {
 			desc: "Shows what equipment belongs to what slot for create",
 		},
 		{
-			cmnd: "give <item name>",
+			cmnd: "new <item id or name>",
 			desc: "Tries to give <item>. Has to exist in world item array.",
 		},
 		{
@@ -437,7 +451,30 @@ func (w *World) initEQList() {
 func (w *World) initItems() {
 
 	w.items = append(w.items, &Item{id: 1, name: "a leather cap", desc: "It's as plain as it gets, covers the melon, provides minor protection.", slot: headSlot, uID: time.Now().Format(time.RFC3339)})
+	addItem(w.testIMap, w.items[0])
 	//w.items = append(w.items, &Item{2, "", "", faceSlot})
+}
+
+// would need to initmap - make(map[string]*ItemContainer)
+// add items to the item map
+func addItem(items map[string]map[int]*Item, item *Item) {
+	name := item.name
+	if _, ok := items[name]; !ok {
+		items[name] = make(map[int]*Item)
+	}
+	instanceNo := len(items[name])
+	items[name][instanceNo] = item
+}
+
+// return item instance
+func getItem(items map[string]map[int]*Item, name string, instanceNo int) (*Item, error) {
+	if _, ok := items[name]; !ok {
+		return nil, fmt.Errorf("item with name %s not found", name)
+	}
+	if _, ok := items[name][instanceNo]; !ok {
+		return nil, fmt.Errorf("instance %d of item with name %s not found", instanceNo, name)
+	}
+	return items[name][instanceNo], nil
 }
 
 func emoteHandler(input []string, usr *User, w *World) {
@@ -1014,6 +1051,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			}
 			if !fail {
 				w.items = append(w.items, i)
+				addItem(w.testIMap, i)
 				usr.session.WriteLine("Added: " + i.name + " - " + i.desc + " - " + fmt.Sprint(i.slot))
 			}
 
@@ -1040,7 +1078,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			}
 		}
 		usr.session.WriteLine(fmt.Sprintf("        %s total length of world.items slice", fmt.Sprint(len(w.items))))
-	case "give":
+	case "new":
 		giveStr := ""
 		for i := 1; i < len(args); i++ {
 			giveStr = giveStr + " " + args[i]
@@ -1089,6 +1127,9 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						w.items = append(w.items, item)
 						//itm.loc = usr.getLocation()
 						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s' - uID: %s", fmt.Sprint(n), itm.name, item.uID))
+						//test code below this and above next comment----------------------------------------------------------------------------------------------
+						addItem(w.testIMap, item)
+						//next comment----------------------------------------------------------------------------------------------
 						return
 					}
 				}
@@ -1430,6 +1471,20 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 				return
 			}
 		}
+	case "test":
+		for n, i := range w.testIMap {
+			for j := 0; j < len(i); j++ {
+				if i[j].loc != nil {
+					usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Location: %s, Instance: %s, Address: %p", fmt.Sprint(i[j].id), n, i[j].loc.getName(), fmt.Sprint(j), i[j]))
+				} else {
+					usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Location: nil, Instance: %s, Address: %p", fmt.Sprint(i[j].id), n, fmt.Sprint(j), i[j]))
+				}
+
+			}
+
+			//usr.session.WriteLine(fmt.Sprintf("Key: %s, Location: %s, Instance: %s", n, i.itm.loc.getName(), fmt.Sprint(i.instanceNo)))
+			//usr.session.WriteLine(fmt.Sprintf("%s length: %s", len(i)))
+		}
 	case "nod":
 		emoteHandler(args, usr, w)
 	case "flail":
@@ -1524,51 +1579,6 @@ func (u *User) initChar() *Character {
 	return char
 }
 
-/*
-	func (i *Item) slotToString() string {
-		slot := ""
-		switch i.slot {
-
-		case 1:
-			slot = "        Head: "
-		case 2:
-			slot = "        Face: "
-		case 3:
-			slot = "        Neck: "
-		case 4:
-			slot = "       About: "
-		case 5:
-			slot = "       Chest: "
-		case 6:
-			slot = "        Back: "
-		case 7:
-			slot = "   Held Left: "
-		case 8:
-			slot = "  Held Right: "
-		case 9:
-			slot = "       Waist: "
-		case 10:
-			slot = "        Legs: "
-		case 11:
-			slot = "        Feet: "
-		case 12:
-			slot = "        Arms: "
-		case 13:
-			slot = "  Left Wrist: "
-		case 14:
-			slot = " Right Wrist: "
-		case 15:
-			slot = "       Hands: "
-		case 16:
-			slot = " Left Finger: "
-		case 17:
-			slot = "Right Finger: "
-		default:
-			slot = "Invalid Slot: "
-		}
-		return slot
-	}
-*/
 func handleConnection(world *World, user *User, session *Session, conn net.Conn, inputChannel chan ClientInput) error {
 	user.buf = make([]byte, 4096)
 	inputChannel <- ClientInput{
@@ -1601,6 +1611,7 @@ func startServer(inputChannel chan ClientInput) error {
 	w.loadRooms()
 	w.loadHelp()
 	w.items = []*Item{}
+	w.testIMap = make(map[string]map[int]*Item)
 	w.loadEmotes()
 	w.initEQList()
 	w.initItems()
