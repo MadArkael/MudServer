@@ -160,13 +160,13 @@ type Session struct {
 }
 
 type World struct {
-	users    []*User
-	rooms    []*Room
-	cmnds    []*Command
-	items    []*Item
-	emotes   []*Emote
-	eqList   []string
-	testIMap map[string]map[int]*Item
+	users []*User
+	rooms []*Room
+	cmnds []*Command
+
+	emotes []*Emote
+	eqList []string
+	items  map[string]map[int]*Item
 }
 
 // todo load data from disk
@@ -279,8 +279,8 @@ func (w *World) loadHelp() {
 			desc: "Displays held items.",
 		},
 		{
-			cmnd: "listitems",
-			desc: "Lists all items in world item array.",
+			cmnd: "listitems <arg>",
+			desc: "Lists first instances w/o arg. Arg can be ID, name, or part of name. Is greedy.",
 		},
 		{
 			cmnd: "drop <item>",
@@ -449,13 +449,9 @@ func (w *World) initEQList() {
 }
 
 func (w *World) initItems() {
-
-	w.items = append(w.items, &Item{id: 1, name: "a leather cap", desc: "It's as plain as it gets, covers the melon, provides minor protection.", slot: headSlot, uID: time.Now().Format(time.RFC3339)})
-	addItem(w.testIMap, w.items[0])
-	//w.items = append(w.items, &Item{2, "", "", faceSlot})
+	addItem(w.items, &Item{id: 1, name: "a leather cap", desc: "It's as plain as it gets, covers the melon, provides minor protection.", slot: headSlot, uID: time.Now().Format(time.RFC3339)})
 }
 
-// would need to initmap - make(map[string]*ItemContainer)
 // add items to the item map
 func addItem(items map[string]map[int]*Item, item *Item) {
 	name := item.name
@@ -998,7 +994,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 	case "eq", "equip":
 		usr.session.WriteLine("You are wearing:")
 		if len(usr.char.eq) == 0 {
-			usr.session.WriteLine("    nothing!")
+			usr.session.WriteLine("    " + color("cyan", "nothing!"))
 			return
 		}
 		for _, s := range w.eqList {
@@ -1031,8 +1027,8 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			fail := false
 			id := 0
 			for _, i := range w.items {
-				if i.id > id {
-					id = i.id
+				if i[0].id > id {
+					id = i[0].id
 				}
 			}
 			i := &Item{
@@ -1042,16 +1038,15 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 				slot: slot,
 				uID:  time.Now().Format(time.RFC3339),
 			}
-			for _, itm := range w.items {
-				if strings.EqualFold(itm.name, i.name) {
+			for key, _ := range w.items {
+				if strings.EqualFold(key, i.name) {
 					fail = true
 					usr.session.WriteLine("Item name exists in world.")
 
 				}
 			}
 			if !fail {
-				w.items = append(w.items, i)
-				addItem(w.testIMap, i)
+				addItem(w.items, i)
 				usr.session.WriteLine("Added: " + i.name + " - " + i.desc + " - " + fmt.Sprint(i.slot))
 			}
 
@@ -1063,73 +1058,104 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			usr.session.WriteLine("Not enough arguments to make an item.")
 		}
 	case "listitems":
-		for _, itm := range w.items {
-			if itm.loc != nil {
-				r, room := itm.loc.(*Room)
-				if room {
-					usr.session.WriteLine(fmt.Sprint(itm.id) + " - " + itm.name + " - " + itm.desc + " - " + itm.slot + " - " + r.name)
+		//has an argument to search a specific item
+		if len(args) > 1 {
+			//check if first arg is an int or not
+			eyeD, err := strconv.Atoi(args[1])
+			//not an int search by map key (item name)
+			if err != nil {
+				for i := 2; i < len(args); i++ {
+					args[1] = args[1] + " " + args[i]
 				}
-				u, user := itm.loc.(*User)
-				if user {
-					usr.session.WriteLine(fmt.Sprint(itm.id) + " - " + itm.name + " - " + itm.desc + " - " + itm.slot + " - " + u.name)
+				args[1] = strings.TrimLeft(args[1], " ")
+				if _, ok := w.items[args[1]]; !ok {
+					fail := true
+					//argument supplied is not a map key value, lets try searching map key arguments
+					for s, m := range w.items {
+						ss := strings.Split(s, " ")
+						for sss := 0; sss < len(ss); sss++ {
+							if strings.EqualFold(ss[sss], args[1]) {
+								fail = false
+								for i := 0; i < len(m); i++ {
+									if m[i].loc != nil {
+										usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Location: %s, Instance: %s, Address: %p", fmt.Sprint(m[i].id), s, m[i].loc.getName(), fmt.Sprint(i), m[i]))
+									} else {
+										usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Location: nil, Instance: %s, Address: %p", fmt.Sprint(m[i].id), s, fmt.Sprint(i), m[i]))
+									}
+								}
+							}
+						}
+					}
+					if fail {
+						usr.session.WriteLine(fmt.Sprintf("'%s' is not a valid item name or part of an item name.", args[1]))
+					}
+				} else {
+					for n, i := range w.items[args[1]] {
+						if i.loc != nil {
+							usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Location: %s, Instance: %s, Address: %p", fmt.Sprint(i.id), args[1], i.loc.getName(), fmt.Sprint(n), i))
+						} else {
+							usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Location: nil, Instance: %s, Address: %p", fmt.Sprint(i.id), args[1], fmt.Sprint(n), i))
+						}
+					}
 				}
 			} else {
-				usr.session.WriteLine(fmt.Sprint(itm.id) + " - " + itm.name + " - " + itm.desc + " - " + itm.slot + " - nil")
+				//id search
+				for s, m := range w.items {
+					if m[0].id == eyeD {
+						for i := 0; i < len(m); i++ {
+							if m[i].loc != nil {
+								usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Location: %s, Instance: %s, Address: %p", fmt.Sprint(m[i].id), s, m[i].loc.getName(), fmt.Sprint(i), m[i]))
+							} else {
+								usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Location: nil, Instance: %s, Address: %p", fmt.Sprint(m[i].id), s, fmt.Sprint(i), m[i]))
+							}
+						}
+					}
+				}
+			}
+		} else {
+			// no argument display all first instances of items
+			for s, m := range w.items {
+				if m[0].loc != nil {
+					usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, 1st Loc: %s, Instances: %s, Address: %p", fmt.Sprint(m[0].id), s, m[0].loc.getName(), fmt.Sprint(len(m)), m[0]))
+				} else {
+					usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, 1st Loc: Nil, Instances: %s, Address: %p", fmt.Sprint(m[0].id), s, fmt.Sprint(len(m)), m[0]))
+				}
 			}
 		}
-		usr.session.WriteLine(fmt.Sprintf("        %s total length of world.items slice", fmt.Sprint(len(w.items))))
 	case "new":
-		giveStr := ""
+		newStr := ""
 		for i := 1; i < len(args); i++ {
-			giveStr = giveStr + " " + args[i]
+			newStr = newStr + " " + args[i]
 		}
-		//need to update this section with world appending etc.
 		if len(args) > 1 {
 			fail := true
 			args[1] = strings.TrimLeft(args[1], " ")
 			n, err := strconv.Atoi(args[1])
 			if err != nil {
 				lenStr := len(args[1])
-				for _, itm := range w.items {
+				for s, m := range w.items {
 					adjStr := lenStr
-					if len(itm.name) < adjStr {
-						adjStr = len(itm.name)
+					if len(s) < adjStr {
+						adjStr = len(s)
 					}
-					if strings.EqualFold(itm.name[0:adjStr], giveStr[0:adjStr]) {
-						usr.char.inv = append(usr.char.inv, itm)
-						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s'", args[1], itm.name))
-						itm.loc = usr.getLocation()
+					if strings.EqualFold(s[0:adjStr], newStr[0:adjStr]) {
+						i := &Item{id: m[0].id, name: m[0].name, desc: m[0].desc, slot: m[0].slot, loc: usr.getLocation(), uID: fmt.Sprint(m[0].id) + "|" + time.Now().Format(time.RFC3339)}
+						usr.char.inv = append(usr.char.inv, i)
+						addItem(w.items, i)
+						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s'", args[1], i.name))
 						fail = false
+						return
 					}
 
 				}
 			} else {
-				for _, itm := range w.items {
-					if itm.id == n {
+				for s, m := range w.items {
+					if m[0].id == n {
 						fail = false
-						id := 0
-						for _, ii := range w.items {
-							if ii.id > id {
-								id = ii.id
-							}
-						}
-						item := new(Item)
-
-						item.id = itm.id
-						item.name = itm.name
-						item.desc = itm.desc
-						item.slot = itm.slot
-						item.loc = usr.getLocation()
-						item.uID = time.Now().Format(time.RFC3339)
+						item := &Item{id: m[0].id, name: m[0].name, desc: m[0].desc, slot: m[0].slot, loc: usr.getLocation(), uID: fmt.Sprint(m[0].id) + "|" + time.Now().Format(time.RFC3339)}
 						usr.char.inv = append(usr.char.inv, item)
-						//removeItemFromWorld(itm, w)
-						//w.items = append(w.items, itm)
-						w.items = append(w.items, item)
-						//itm.loc = usr.getLocation()
-						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s' - uID: %s", fmt.Sprint(n), itm.name, item.uID))
-						//test code below this and above next comment----------------------------------------------------------------------------------------------
-						addItem(w.testIMap, item)
-						//next comment----------------------------------------------------------------------------------------------
+						addItem(w.items, item)
+						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s' - uID: %s", fmt.Sprint(n), s, item.uID))
 						return
 					}
 				}
@@ -1210,6 +1236,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 				if len(i.name) < adjLen {
 					adjLen = len(i.name)
 				}
+				//checking for a portion of the literal name from the front back
 				if strings.EqualFold(i.name[0:adjLen], remStr[0:adjLen]) {
 					fail = false
 					delete(usr.char.eq, i.slot)
@@ -1222,12 +1249,29 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						}
 					}
 					return
+				} else {
+					//literal check failed, lets try item name arguments
+					is := strings.Split(i.name, " ")
+					for iss := range is {
+						if strings.EqualFold(is[iss], args[1]) {
+							fail = false
+							delete(usr.char.eq, i.slot)
+							usr.char.inv = append(usr.char.inv, i)
+							usr.session.WriteLine("You remove a " + color("cyan", i.name) + " from your " + strings.ToLower(i.slot) + ".")
+							for _, u := range usr.room.users {
+								if usr != u {
+									clientOutputChan <- ClientOutput{u, usr.name + " removes a " + color("cyan", i.name) + " from their " + strings.ToLower(i.slot) + ".", &BroadcastEvent{}, w}
+								}
+							}
+							//dont want this to be greedy. rem leather should only remove one leather item
+							return
+						}
+					}
 				}
 			}
 			if fail {
 				usr.session.WriteLine(fmt.Sprintf("Can't find an item like '%s' equipped.", remStr))
 			}
-			//tryToRemove(strings.TrimLeft(remStr, " "), usr, w)
 		} else {
 			usr.session.WriteLine("What are you trying to remove?")
 		}
@@ -1440,28 +1484,28 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 		args[2] = strings.TrimLeft(args[2], " ")
 		n, err := strconv.Atoi(args[1])
 		n2, err2 := strconv.Atoi(args[2])
-		inst := 0
-		for _, itm := range w.items {
+		for s, m := range w.items {
 			if err == nil && err2 == nil {
-				if itm.id == n {
-					inst++
-					if inst == n2+1 {
-						if lc, ok := itm.loc.(*Room); ok {
-							removeItemFromRoom(itm, lc)
-							usr.session.WriteLine(fmt.Sprintf("You snatched %s from room: %s", color("cyan", itm.name), color("red", lc.name)))
+				if m[0].id == n {
+					if _, ok := m[n2]; !ok {
+						usr.session.WriteLine(fmt.Sprintf("'%s' is not a valid instance of '%s'", fmt.Sprint(n2), s))
+					} else {
+						if lc, ok := m[n2].loc.(*Room); ok {
+							removeItemFromRoom(m[n2], lc)
+							usr.session.WriteLine(fmt.Sprintf("You snatched %s from room: %s", color("cyan", m[n2].name), color("red", lc.name)))
 							for _, u := range lc.users {
-								clientOutputChan <- ClientOutput{u, fmt.Sprintf("%s whisked %s away from the ground here!", color("red", usr.name), color("cyan", itm.name)), &BroadcastEvent{}, w}
+								clientOutputChan <- ClientOutput{u, fmt.Sprintf("%s whisked %s away from the ground here!", color("red", usr.name), color("cyan", m[n2].name)), &BroadcastEvent{}, w}
 							}
-							usr.char.inv = append(usr.char.inv, itm)
-							itm.loc = usr.getLocation()
+							usr.char.inv = append(usr.char.inv, m[n2])
+							m[n2].loc = usr.getLocation()
 							return
 						}
-						if lc, ok := itm.loc.(*User); ok {
-							removeItemFromInventory(itm, lc)
-							usr.char.inv = append(usr.char.inv, itm)
-							usr.session.WriteLine(fmt.Sprintf("You stole %s from %s!", color("cyan", itm.name), color("red", lc.name)))
-							clientOutputChan <- ClientOutput{lc, fmt.Sprintf("%s stole %s from your inventory!", color("red", usr.name), color("cyan", itm.name)), &BroadcastEvent{}, w}
-							itm.loc = usr.getLocation()
+						if lc, ok := m[n2].loc.(*User); ok {
+							removeItemFromInventory(m[n2], lc)
+							usr.char.inv = append(usr.char.inv, m[n2])
+							usr.session.WriteLine(fmt.Sprintf("You stole %s from %s!", color("cyan", m[n2].name), color("red", lc.name)))
+							clientOutputChan <- ClientOutput{lc, fmt.Sprintf("%s stole %s from your inventory!", color("red", usr.name), color("cyan", m[n2].name)), &BroadcastEvent{}, w}
+							m[n2].loc = usr.getLocation()
 							return
 						}
 					}
@@ -1472,19 +1516,6 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			}
 		}
 	case "test":
-		for n, i := range w.testIMap {
-			for j := 0; j < len(i); j++ {
-				if i[j].loc != nil {
-					usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Location: %s, Instance: %s, Address: %p", fmt.Sprint(i[j].id), n, i[j].loc.getName(), fmt.Sprint(j), i[j]))
-				} else {
-					usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Location: nil, Instance: %s, Address: %p", fmt.Sprint(i[j].id), n, fmt.Sprint(j), i[j]))
-				}
-
-			}
-
-			//usr.session.WriteLine(fmt.Sprintf("Key: %s, Location: %s, Instance: %s", n, i.itm.loc.getName(), fmt.Sprint(i.instanceNo)))
-			//usr.session.WriteLine(fmt.Sprintf("%s length: %s", len(i)))
-		}
 	case "nod":
 		emoteHandler(args, usr, w)
 	case "flail":
@@ -1500,16 +1531,6 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 	default:
 		usr.session.WriteLine(color("magenta", fmt.Sprintf("'%s' is not recognized as a command.", args[0])))
 		return
-	}
-}
-
-func removeItemFromSlice(i *Item, s []*Item) {
-
-	for n, item := range s {
-		if item == i {
-			s[n] = s[len(s)-1]
-			s = s[:len(s)-1]
-		}
 	}
 }
 
@@ -1533,48 +1554,12 @@ func removeItemFromRoom(i *Item, r *Room) {
 	}
 }
 
-func removeItemFromWorld(i *Item, w *World) {
-
-	for n, item := range w.items {
-		if item == i {
-			w.items[n] = w.items[len(w.items)-1]
-			w.items = w.items[:len(w.items)-1]
-		}
-	}
-}
-
 func (u *User) initChar() *Character {
 	char := &Character{
 		name: u.name,
 		desc: "ToDo",
-		eq: map[string]*Item{
-			headSlot: &Item{
-				name: "Red Hat",
-				desc: "It's a red hat",
-				slot: headSlot,
-			},
-			faceSlot: &Item{
-				name: "Red Facemask",
-				desc: "It's a red facemask",
-				slot: faceSlot,
-			},
-			neckSlot: &Item{
-				name: "Red Scarf",
-				desc: "It's a red scarf",
-				slot: neckSlot,
-			},
-			aboutSlot: &Item{
-				name: "Red Cloak",
-				desc: "It's a red cloak",
-				slot: aboutSlot,
-			},
-			chestSlot: &Item{
-				name: "Red Chestplate",
-				desc: "It's a red chestplate",
-				slot: chestSlot,
-			},
-		},
-		inv: []*Item{},
+		eq:   map[string]*Item{},
+		inv:  []*Item{},
 	}
 	return char
 }
@@ -1610,8 +1595,7 @@ func startServer(inputChannel chan ClientInput) error {
 	w := &World{}
 	w.loadRooms()
 	w.loadHelp()
-	w.items = []*Item{}
-	w.testIMap = make(map[string]map[int]*Item)
+	w.items = make(map[string]map[int]*Item)
 	w.loadEmotes()
 	w.initEQList()
 	w.initItems()
