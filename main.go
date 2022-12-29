@@ -314,6 +314,11 @@ func (w *World) loadRooms() {
 					lookMsg:  "The kitchen lies in that direction.",
 					linkedID: 2,
 				},
+				{
+					keyword:  "west",
+					lookMsg:  "You see a garden, orchard, and meadow outside of the house.",
+					linkedID: 8,
+				},
 			},
 		},
 		{
@@ -416,6 +421,91 @@ func (w *World) loadRooms() {
 					keyword:  "through",
 					lookMsg:  "Back through the closet into 'Spare Hroom.'",
 					linkedID: 6,
+				},
+			},
+		},
+		{
+			name:  "Before A Farmhouse",
+			desc:  "At the end of the path, you finally reach the farmhouse. It's a quaint, two-story building with a thatched roof and a large front porch.",
+			id:    8,
+			items: []*Item{},
+			exits: []*Exit{
+				{
+					keyword:  "east",
+					lookMsg:  "The homes main method of entry lies in that direction.",
+					linkedID: 1,
+				},
+				{
+					keyword:  "west",
+					lookMsg:  "A garden appears to be that way",
+					linkedID: 9,
+				},
+			},
+		},
+		{
+			name:  "The Vegetable Garden",
+			desc:  "Next to the orchard is a well-tended vegetable garden, filled with rows of lettuce, tomatoes, beans, and other fresh produce. The scent of herbs and vegetables fills the air.",
+			id:    9,
+			items: []*Item{},
+			exits: []*Exit{
+				{
+					keyword:  "east",
+					lookMsg:  "The path comes to a halt before a dwelling.",
+					linkedID: 8,
+				},
+				{
+					keyword:  "west",
+					lookMsg:  "Rows and rows of trees...",
+					linkedID: 10,
+				},
+			},
+		},
+		{
+			name:  "The Orchard",
+			desc:  "As you continue up the path, you come upon an orchard filled with rows of fruit trees. The branches are heavy with ripe apples, pears, and cherries, and the ground is littered with fallen fruit.",
+			id:    10,
+			items: []*Item{},
+			exits: []*Exit{
+				{
+					keyword:  "east",
+					lookMsg:  "A garden appears to be that way",
+					linkedID: 9,
+				},
+				{
+					keyword:  "west",
+					lookMsg:  "The trees end and an grassy expanse begins.",
+					linkedID: 11,
+				},
+			},
+		},
+		{
+			name:  "The Meadow",
+			desc:  "The forest path opens up into a wide meadow, filled with tall grasses and wildflowers. The sun is warm on your skin, and the breeze carries the scent of freshly cut hay. In the distance, you can see the farmhouse nestled among the fields.",
+			id:    11,
+			items: []*Item{},
+			exits: []*Exit{
+				{
+					keyword:  "east",
+					lookMsg:  "Rows and rows of trees...",
+					linkedID: 10,
+				},
+				{
+					keyword:  "west",
+					lookMsg:  "A path decends through a natural archway of tree branches.",
+					linkedID: 12,
+				},
+			},
+		},
+		{
+			name:  "The Forest Path",
+			desc:  "This winding path is surrounded by tall trees, their branches forming a canopy overhead. The ground is soft and spongy beneath your feet, covered in a thick layer of fallen leaves and pine needles. The air is cool and fresh, the only sounds coming from the birds singing in the treetops and the occasional rustle of small animals in the underbrush.",
+			id:    12,
+			items: []*Item{},
+			exits: []*Exit{
+				{
+					keyword:  "east",
+					lookMsg:  "The trees end and an grassy expanse begins.",
+					linkedID: 11,
 				},
 			},
 		},
