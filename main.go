@@ -130,6 +130,14 @@ type Item struct {
 	uID  string
 }
 
+type Container interface {
+	getItems() []*Item
+	getName() string
+	add(item *Item)
+	remove(item *Item)
+	contains(item *Item) bool
+}
+
 type Location interface {
 	getLocation() Location
 	getName() string
@@ -142,12 +150,63 @@ func (u *User) getName() string {
 	return u.name
 }
 
+func (u *User) getItems() []*Item {
+	return u.char.inv
+}
+
+func (u *User) add(item *Item) {
+	u.char.inv = append(u.char.inv, item)
+}
+
+func (u *User) remove(item *Item) {
+
+	for i, j := range u.char.inv {
+		if j == item {
+			u.char.inv = append(u.char.inv[:i], u.char.inv[i+1:]...)
+		}
+	}
+}
+
+func (u *User) contains(item *Item) bool {
+	for _, it := range u.char.inv {
+		if it == item {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Room) getLocation() Location {
 	return r
 }
 
 func (r *Room) getName() string {
 	return r.name
+}
+
+func (r *Room) getItems() []*Item {
+	return r.items
+}
+
+func (r *Room) remove(item *Item) {
+
+	for i, j := range r.items {
+		if j == item {
+			r.items = append(r.items[:i], r.items[i+1:]...)
+		}
+	}
+}
+func (r *Room) add(item *Item) {
+	r.items = append(r.items, item)
+}
+
+func (r *Room) contains(item *Item) bool {
+	for _, it := range r.items {
+		if it == item {
+			return true
+		}
+	}
+	return false
 }
 
 type Session struct {
@@ -255,7 +314,7 @@ func (w *World) loadHelp() {
 		},
 		{
 			cmnd: "wear <item name>",
-			desc: "Like say/yell, but heard everywhere.",
+			desc: "Tries to equip item.",
 		},
 		{
 			cmnd: "create <item name>|<item desc>|<slot #>",
@@ -1175,6 +1234,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						usr.session.WriteLine(fmt.Sprintf("'%s' is not a valid item name or part of an item name.", args[1]))
 					}
 				} else {
+					//argument is a map key
 					for n, i := range w.items[args[1]] {
 						if i.loc != nil {
 							usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Location: %s, Instance: %s, Address: %p", fmt.Sprint(i.id), args[1], i.loc.getName(), fmt.Sprint(n), i))
@@ -1716,7 +1776,6 @@ func startServer(inputChannel chan ClientInput) error {
 }
 
 func startInputLoop(clientInputChannel <-chan ClientInput) {
-	//w := &World{}
 	for input := range clientInputChannel {
 
 		switch event := input.event.(type) {
@@ -1752,7 +1811,6 @@ func startInputLoop(clientInputChannel <-chan ClientInput) {
 		}
 		input.user.session.WriteLine(input.user.getPrompt(input.user.room))
 	}
-
 }
 
 func startOutputLoop(clientOutputChannel <-chan ClientOutput) {
@@ -1775,5 +1833,4 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 }
