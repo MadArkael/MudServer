@@ -1160,15 +1160,25 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			}
 			flds := strings.Split(str, "|")
 			if len(flds) != 3 {
-				usr.session.WriteLine("Not enough arguments to make an item.")
+				usr.session.WriteLine("Not enough/Too many arguments to make an item.")
 				return
 			}
 			name := strings.TrimLeft(flds[0], " ")
 			desc := flds[1]
 			slot := flds[2]
+			fail := true
+			for j := 0; j < len(w.eqList); j++ {
+				if slot == w.eqList[j] {
+					fail = false
+				}
+			}
+			if fail {
+				usr.session.WriteLine("Bad itemslot. Type slots for help.")
+				return
+			}
 			//slot, err := strconv.Atoi(flds[2])
 			//if err == nil {
-			fail := false
+
 			id := 0
 			for _, i := range w.items {
 				if i[0].id > id {
@@ -1340,6 +1350,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 				if len(i.name) < lenStr {
 					adjStr = len(i.name)
 				}
+				//wear by matching the first part of the name length of input string
 				if strings.EqualFold(i.name[0:adjStr], wearStr[0:adjStr]) {
 					//tryToWear(i, usr, w)
 					fail = false
@@ -1355,7 +1366,26 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 							clientOutputChan <- ClientOutput{u, usr.name + " places a " + color("cyan", i.name) + " on their " + strings.ToLower(i.slot) + ".", &BroadcastEvent{}, w}
 						}
 					}
-
+					return
+				}
+				//didnt match first part, lets break items into arguments
+				itmArgs := strings.Split(i.name, " ")
+				for _, k := range itmArgs {
+					if strings.EqualFold(k, args[1]) {
+						if usr.char.eq[i.slot] != nil {
+							usr.session.WriteLine("You already have something equipped on your " + strings.ToLower(i.slot) + ".")
+							return
+						}
+						fail = false
+						usr.char.eq[i.slot] = i
+						removeItemFromInventory(i, usr)
+						usr.session.WriteLine(fmt.Sprintf("You place a %s on your %s.", color("cyan", i.name), strings.ToLower(i.slot)))
+						for _, u := range usr.room.users {
+							if usr != u {
+								clientOutputChan <- ClientOutput{u, usr.name + " places a " + color("cyan", i.name) + " on their " + strings.ToLower(i.slot) + ".", &BroadcastEvent{}, w}
+							}
+						}
+					}
 				}
 				if !fail {
 					return
@@ -1464,9 +1494,25 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 							usr.session.WriteLine("You drop a " + color("cyan", i.name) + " on the ground here.")
 						}
 					}
+					return
 				}
-				if !fail {
-					break
+				// item arguments check
+				itmArgs := strings.Split(i.name, " ")
+				for _, k := range itmArgs {
+					if strings.EqualFold(k, args[1]) {
+						fail = false
+						usr.room.items = append(usr.room.items, i)
+						i.loc = usr.room.getLocation()
+						removeItemFromInventory(i, usr)
+						for _, u := range usr.room.users {
+							if u != usr {
+								eventCh <- ClientOutput{u, usr.name + " drops a " + color("cyan", i.name) + " on the ground here.", &BroadcastEvent{}, w}
+							} else {
+								usr.session.WriteLine("You drop a " + color("cyan", i.name) + " on the ground here.")
+							}
+						}
+						return
+					}
 				}
 			}
 			if fail {
@@ -1502,9 +1548,25 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 							usr.session.WriteLine("You pick up a " + color("cyan", itm.name) + " off the ground here.")
 						}
 					}
+					return
 				}
-				if !fail {
-					break
+				// item argument check
+				itmArgs := strings.Split(itm.name, " ")
+				for _, k := range itmArgs {
+					if strings.EqualFold(k, args[1]) {
+						fail = false
+						removeItemFromRoom(itm, usr.room)
+						usr.char.inv = append(usr.char.inv, itm)
+						itm.loc = usr.getLocation()
+						for _, u := range usr.room.users {
+							if u != usr {
+								eventCh <- ClientOutput{u, usr.name + " picks up a " + color("cyan", itm.name) + " off the ground here.", &BroadcastEvent{}, w}
+							} else {
+								usr.session.WriteLine("You pick up a " + color("cyan", itm.name) + " off the ground here.")
+							}
+						}
+						return
+					}
 				}
 			}
 			if fail {
