@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"go4.org/strutil"
 )
 
 const (
@@ -30,6 +33,7 @@ const (
 )
 
 var clientOutputChan chan ClientOutput
+var w *World
 
 type Command struct {
 	cmnd string
@@ -1359,7 +1363,8 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						return
 					}
 					usr.char.eq[i.slot] = i
-					removeItemFromInventory(i, usr)
+					//removeItemFromInventory(i, usr)
+					usr.char.inv = removeItemFromSlice(i, usr.char.inv)
 					usr.session.WriteLine(fmt.Sprintf("You place a %s on your %s.", color("cyan", i.name), strings.ToLower(i.slot)))
 					for _, u := range usr.room.users {
 						if usr != u {
@@ -1378,7 +1383,8 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						}
 						fail = false
 						usr.char.eq[i.slot] = i
-						removeItemFromInventory(i, usr)
+						//removeItemFromInventory(i, usr)
+						usr.char.inv = removeItemFromSlice(i, usr.char.inv)
 						usr.session.WriteLine(fmt.Sprintf("You place a %s on your %s.", color("cyan", i.name), strings.ToLower(i.slot)))
 						for _, u := range usr.room.users {
 							if usr != u {
@@ -1470,109 +1476,37 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 		usr.session.WriteLine(color("magenta", fingerRSlot))
 	case "drop":
 		if len(args) > 1 {
-			dropStr := ""
-			fail := true
-			for i := 1; i < len(args); i++ {
-				dropStr = dropStr + " " + args[i]
-			}
-			dropStr = strings.TrimLeft(dropStr, " ")
-			lenStr := len(dropStr)
-			for _, i := range usr.char.inv {
-				adjLen := lenStr
-				if len(i.name) < lenStr {
-					adjLen = len(i.name)
-				}
-				if strings.EqualFold(i.name[0:adjLen], dropStr[0:adjLen]) {
-					fail = false
-					usr.room.items = append(usr.room.items, i)
-					i.loc = usr.room.getLocation()
-					removeItemFromInventory(i, usr)
-					for _, u := range usr.room.users {
-						if u != usr {
-							eventCh <- ClientOutput{u, usr.name + " drops a " + color("cyan", i.name) + " on the ground here.", &BroadcastEvent{}, w}
-						} else {
-							usr.session.WriteLine("You drop a " + color("cyan", i.name) + " on the ground here.")
-						}
-					}
-					return
-				}
-				// item arguments check
-				itmArgs := strings.Split(i.name, " ")
-				for _, k := range itmArgs {
-					if strings.EqualFold(k, args[1]) {
-						fail = false
-						usr.room.items = append(usr.room.items, i)
-						i.loc = usr.room.getLocation()
-						removeItemFromInventory(i, usr)
-						for _, u := range usr.room.users {
-							if u != usr {
-								eventCh <- ClientOutput{u, usr.name + " drops a " + color("cyan", i.name) + " on the ground here.", &BroadcastEvent{}, w}
-							} else {
-								usr.session.WriteLine("You drop a " + color("cyan", i.name) + " on the ground here.")
-							}
-						}
+			if args[1] != "" {
+				dropStr := args[1]
+				dropStr = strings.TrimSpace(dropStr)
+				for _, i := range usr.char.inv {
+					if strutil.ContainsFold(i.name, dropStr) {
+						dropItem(usr, i)
 						return
 					}
 				}
-			}
-			if fail {
 				usr.session.WriteLine(color("magenta", "You are not carrying that. "+dropStr))
+				return
 			}
+			usr.session.WriteLine(color("magenta", "You must supply an item to drop."))
 		} else {
 			usr.session.WriteLine(color("magenta", "What are you trying to drop?"))
 		}
 	case "take":
 		if len(args) > 1 {
-			takeStr := ""
-			fail := true
-			for i := 1; i < len(args); i++ {
-				takeStr = takeStr + " " + args[i]
-			}
-			takeStr = strings.TrimLeft(takeStr, " ")
-			lenStr := len(takeStr)
-
-			for _, itm := range usr.room.items {
-				adjLen := lenStr
-				if len(itm.name) < lenStr {
-					adjLen = len(itm.name)
-				}
-				if strings.EqualFold(itm.name[0:adjLen], takeStr[0:adjLen]) {
-					fail = false
-					removeItemFromRoom(itm, usr.room)
-					usr.char.inv = append(usr.char.inv, itm)
-					itm.loc = usr.getLocation()
-					for _, u := range usr.room.users {
-						if u != usr {
-							eventCh <- ClientOutput{u, usr.name + " picks up a " + color("cyan", itm.name) + " off the ground here.", &BroadcastEvent{}, w}
-						} else {
-							usr.session.WriteLine("You pick up a " + color("cyan", itm.name) + " off the ground here.")
-						}
-					}
-					return
-				}
-				// item argument check
-				itmArgs := strings.Split(itm.name, " ")
-				for _, k := range itmArgs {
-					if strings.EqualFold(k, args[1]) {
-						fail = false
-						removeItemFromRoom(itm, usr.room)
-						usr.char.inv = append(usr.char.inv, itm)
-						itm.loc = usr.getLocation()
-						for _, u := range usr.room.users {
-							if u != usr {
-								eventCh <- ClientOutput{u, usr.name + " picks up a " + color("cyan", itm.name) + " off the ground here.", &BroadcastEvent{}, w}
-							} else {
-								usr.session.WriteLine("You pick up a " + color("cyan", itm.name) + " off the ground here.")
-							}
-						}
+			if args[1] != "" {
+				takeStr := args[1]
+				takeStr = strings.TrimSpace(takeStr)
+				for _, itm := range usr.room.items {
+					if strutil.ContainsFold(itm.name, takeStr) {
+						usr.room.items = takeItem(usr, itm, usr.room.items)
 						return
 					}
 				}
-			}
-			if fail {
 				usr.session.WriteLine(color("magenta", "You don't see that here. "+takeStr))
+				return
 			}
-
+			usr.session.WriteLine(color("magenta", "You must supply an item to drop."))
 		} else {
 			usr.session.WriteLine(color("magenta", "What are you trying to take?"))
 		}
@@ -1698,21 +1632,23 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						usr.session.WriteLine(fmt.Sprintf("'%s' is not a valid instance of '%s'", fmt.Sprint(n2), s))
 					} else {
 						if lc, ok := m[n2].loc.(*Room); ok {
-							removeItemFromRoom(m[n2], lc)
+							//removeItemFromRoom(m[n2], lc)
+							lc.items = removeItemFromSlice(m[n2], lc.items)
+							usr.char.inv = append(usr.char.inv, m[n2])
+							m[n2].loc = usr.getLocation()
 							usr.session.WriteLine(fmt.Sprintf("You snatched %s from room: %s", color("cyan", m[n2].name), color("red", lc.name)))
 							for _, u := range lc.users {
 								clientOutputChan <- ClientOutput{u, fmt.Sprintf("%s whisked %s away from the ground here!", color("red", usr.name), color("cyan", m[n2].name)), &BroadcastEvent{}, w}
 							}
-							usr.char.inv = append(usr.char.inv, m[n2])
-							m[n2].loc = usr.getLocation()
 							return
 						}
 						if lc, ok := m[n2].loc.(*User); ok {
-							removeItemFromInventory(m[n2], lc)
+							//removeItemFromInventory(m[n2], lc)
+							usr.char.inv = removeItemFromSlice(m[n2], lc.char.inv)
 							usr.char.inv = append(usr.char.inv, m[n2])
+							m[n2].loc = usr.getLocation()
 							usr.session.WriteLine(fmt.Sprintf("You stole %s from %s!", color("cyan", m[n2].name), color("red", lc.name)))
 							clientOutputChan <- ClientOutput{lc, fmt.Sprintf("%s stole %s from your inventory!", color("red", usr.name), color("cyan", m[n2].name)), &BroadcastEvent{}, w}
-							m[n2].loc = usr.getLocation()
 							return
 						}
 					}
@@ -1722,13 +1658,22 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 				return
 			}
 		}
+		/*
+			i, err := getItem(w.items, "a leather cap", 2)
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Loc: %s, Address: %p", fmt.Sprint(i.id), i.name, i.loc.getName(), i))
+			}
+		*/
 	case "test":
-		i, err := getItem(w.items, "a leather cap", 2)
-		if err != nil {
-			fmt.Println(err)
-		} else {
-			usr.session.WriteLine(fmt.Sprintf("ID: %s, Key: %s, Loc: %s, Address: %p", fmt.Sprint(i.id), i.name, i.loc.getName(), i))
+		for _, i := range usr.room.items {
+			if strings.Contains(i.name, args[1]) {
+				usr.room.items = removeItemFromSlice(i, usr.room.items)
+				usr.char.inv = append(usr.char.inv, i)
+			}
 		}
+
 	case "nod":
 		emoteHandler(args, usr, w)
 	case "flail":
@@ -1747,24 +1692,44 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 	}
 }
 
-func removeItemFromInventory(i *Item, u *User) {
+// removes itemToTake from sliceOfItems, handles output to users, returns the updated sliceOfItems
+func takeItem(userTaker *User, itemToTake *Item, sliceOfItems []*Item) []*Item {
+	sliceOfItems = removeItemFromSlice(itemToTake, sliceOfItems)
+	userTaker.char.inv = append(userTaker.char.inv, itemToTake)
+	itemToTake.loc = userTaker.getLocation()
+	for _, u := range userTaker.room.users {
+		if u != userTaker {
+			clientOutputChan <- ClientOutput{u, fmt.Sprintf("%s picks up a %s off the ground here.", userTaker.name, color("cyan", itemToTake.name)), &BroadcastEvent{}, w}
+		} else {
+			userTaker.session.WriteLine(fmt.Sprintf("You pick up a %s off the ground here.", color("cyan", itemToTake.name)))
+		}
+	}
+	return sliceOfItems
+}
 
-	for n, item := range u.char.inv {
-		if item == i {
-			u.char.inv[n] = u.char.inv[len(u.char.inv)-1]
-			u.char.inv = u.char.inv[:len(u.char.inv)-1]
+// removes itemToDrop from userDropper and places it in the userDropper's room
+func dropItem(userDropper *User, itemToDrop *Item) {
+	userDropper.room.items = append(userDropper.room.items, itemToDrop)
+	itemToDrop.loc = userDropper.room.getLocation()
+	//removeItemFromInventory(i, usr)
+	userDropper.char.inv = removeItemFromSlice(itemToDrop, userDropper.char.inv)
+	for _, u := range userDropper.room.users {
+		if u != userDropper {
+			clientOutputChan <- ClientOutput{u, userDropper.name + " drops a " + color("cyan", itemToDrop.name) + " on the ground here.", &BroadcastEvent{}, w}
+		} else {
+			userDropper.session.WriteLine("You drop a " + color("cyan", itemToDrop.name) + " on the ground here.")
 		}
 	}
 }
 
-func removeItemFromRoom(i *Item, r *Room) {
-
-	for n, item := range r.items {
-		if item == i {
-			r.items[n] = r.items[len(r.items)-1]
-			r.items = r.items[:len(r.items)-1]
+func removeItemFromSlice(itemToRemove *Item, sliceOfItems []*Item) []*Item {
+	for n, i := range sliceOfItems {
+		if i == itemToRemove {
+			return append(sliceOfItems[:n], sliceOfItems[n+1:]...)
 		}
 	}
+	fmt.Println(fmt.Printf("func removeItemFromSlice did not remove %s from %s", itemToRemove.name, reflect.TypeOf(sliceOfItems)))
+	return sliceOfItems
 }
 
 func (u *User) initChar() *Character {
@@ -1805,7 +1770,7 @@ func handleConnection(world *World, user *User, session *Session, conn net.Conn,
 func startServer(inputChannel chan ClientInput) error {
 
 	log.Println("Starting Server...")
-	w := &World{}
+	w = &World{}
 	w.loadRooms()
 	w.loadHelp()
 	w.items = make(map[string]map[int]*Item)
