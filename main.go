@@ -30,6 +30,8 @@ const (
 	handsSlot   string = "Hands"
 	fingerLSlot string = "Left Finger"
 	fingerRSlot string = "Right Finger"
+
+	serverName string = "Ark's Chatrooms"
 )
 
 var clientOutputChan chan ClientOutput
@@ -330,7 +332,7 @@ func (w *World) loadHelp() {
 		},
 		{
 			cmnd: "new <item id or name>",
-			desc: "Tries to give <item>. Has to exist in world item array.",
+			desc: "Tries to give you <item>. Has to exist in world item array.",
 		},
 		{
 			cmnd: "i, inv, inventory",
@@ -359,6 +361,14 @@ func (w *World) loadHelp() {
 		{
 			cmnd: "snatch <item id> <instance #>",
 			desc: "gives you instance of item no matter where its at.",
+		},
+		{
+			cmnd: "give <item> <person>",
+			desc: "Tries to give item to person.",
+		},
+		{
+			cmnd: "who",
+			desc: "Lists all users online.",
 		},
 	}
 }
@@ -956,6 +966,7 @@ func (s *Session) WriteLine(str string) error {
 func getNameFromConn(conn net.Conn) string {
 	buf := make([]byte, 4096)
 	name := ""
+	conn.Write([]byte(fmt.Sprintf("Welcome to %s\r\n", serverName)))
 	for len(name) < 3 || len(name) > 15 {
 		conn.Write([]byte("What are you called?"))
 		n, err := conn.Read(buf)
@@ -1844,7 +1855,7 @@ func startInputLoop(clientInputChannel <-chan ClientInput) {
 		case *UserJoinedEvent:
 			fmt.Println("User Joined:", input.user.name)
 			input.world.users = append(input.world.users, input.user)
-			input.user.session.WriteLine(color("cyan", fmt.Sprintf("Welcome %s", input.user.name)))
+			input.user.session.WriteLine(color("cyan", fmt.Sprintf("Welcome %s. Type help for a list of commands.", color("cyan", input.user.name))))
 			input.user.room.addUser(input.user)
 			input.user.room.sendText(input.user)
 			for _, user := range input.world.users {
