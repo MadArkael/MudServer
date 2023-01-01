@@ -955,15 +955,21 @@ func (s *Session) WriteLine(str string) error {
 
 func getNameFromConn(conn net.Conn) string {
 	buf := make([]byte, 4096)
-	conn.Write([]byte("Name?"))
-	n, err := conn.Read(buf)
-	if err != nil {
-		fmt.Println("User Disconnected During Name Creation")
-		conn.Close()
-		return ""
+	name := ""
+	for len(name) < 3 || len(name) > 15 {
+		conn.Write([]byte("What are you called?"))
+		n, err := conn.Read(buf)
+		if err != nil {
+			fmt.Println("User Disconnected During Name Creation")
+			conn.Close()
+			return ""
+		}
+		name = string(buf[0 : n-2])
+		if len(name) < 3 || len(name) > 15 {
+			conn.Write([]byte("Names need to be 3 - 15 characters\r\n"))
+		}
 	}
-	name := string(buf[0 : n-2])
-	return name
+	return strings.ToUpper(name[:1]) + name[1:]
 }
 
 func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
@@ -1569,7 +1575,6 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						usr.session.WriteLine(fmt.Sprintf("'%s' is not a valid instance of '%s'", fmt.Sprint(n2), s))
 					} else {
 						if lc, ok := m[n2].loc.(*Room); ok {
-							//removeItemFromRoom(m[n2], lc)
 							lc.items = removeItemFromSlice(m[n2], lc.items)
 							usr.char.inv = append(usr.char.inv, m[n2])
 							m[n2].loc = usr.getLocation()
@@ -1580,7 +1585,6 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 							return
 						}
 						if lc, ok := m[n2].loc.(*User); ok {
-							//removeItemFromInventory(m[n2], lc)
 							usr.char.inv = removeItemFromSlice(m[n2], lc.char.inv)
 							usr.char.inv = append(usr.char.inv, m[n2])
 							m[n2].loc = usr.getLocation()
@@ -1610,7 +1614,17 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 				usr.char.inv = append(usr.char.inv, i)
 			}
 		}
-
+	case "give":
+		if len(args) == 3 {
+			give(usr, args[2], args[1])
+			return
+		}
+		usr.session.WriteLine("Give requires 3 arguments: Give <object> person.")
+	case "who":
+		usr.session.WriteLine(fmt.Sprintf(color("blue", "%d")+" users are online.", len(w.users)))
+		for _, u := range w.users {
+			usr.session.WriteLine("    " + color("blue", u.name))
+		}
 	case "nod":
 		emoteHandler(args, usr, w)
 	case "flail":
@@ -1659,15 +1673,16 @@ func dropItem(userDropper *User, itemToDrop *Item) {
 	}
 }
 
-func exaCharacter(u1 *User, u2 *User) {
-	itms := u2.char.eq
-	clientOutputChan <- ClientOutput{u2, color("cyan", u1.name) + " looks you over thoroughly.", &BroadcastEvent{}, w}
-	for _, nt := range u1.room.users {
-		if nt != u2 && nt != u1 {
-			clientOutputChan <- ClientOutput{nt, color("cyan", u1.name) + " looks over " + u2.name + "'s equipment.", &BroadcastEvent{}, w}
+// user examiner examines examinee
+func exaCharacter(examiner *User, examinee *User) {
+	itms := examinee.char.eq
+	clientOutputChan <- ClientOutput{examinee, color("cyan", examiner.name) + " looks you over thoroughly.", &BroadcastEvent{}, w}
+	for _, nt := range examiner.room.users {
+		if nt != examinee && nt != examiner {
+			clientOutputChan <- ClientOutput{nt, color("cyan", examiner.name) + " looks over " + examinee.name + "'s equipment.", &BroadcastEvent{}, w}
 		}
 	}
-	u1.session.WriteLine(u2.name + " is wearing:")
+	examiner.session.WriteLine(examinee.name + " is wearing:")
 	if len(itms) != 0 {
 		for _, s := range w.eqList {
 			if i := itms[s]; i != nil {
@@ -1678,27 +1693,64 @@ func exaCharacter(u1 *User, u2 *User) {
 				for j := lenName; j < 12; j++ {
 					adjSlot = " " + adjSlot
 				}
-				u1.session.WriteLine(fmt.Sprintf(color("cyan", "    %s: %s"), adjSlot, i.name))
+				examiner.session.WriteLine(fmt.Sprintf(color("cyan", "    %s: %s"), adjSlot, i.name))
 			}
 		}
 		return
 	}
-	u1.session.WriteLine(color("cyan", " ...nothing!"))
+	examiner.session.WriteLine(color("cyan", " ...nothing!"))
 }
 
-func exaItem(u *User, i *Item, loc string) {
+// examiner looks at itemExamined, itemlocation changes the first string written out to the client
+func exaItem(examiner *User, itemExamined *Item, itemlocation string) {
 	exaloc := ""
-	switch loc {
+	switch itemlocation {
 	case "room":
-		exaloc = "You take a closer look at a " + color("cyan", i.name) + " in the room."
+		exaloc = "You take a closer look at a " + color("cyan", itemExamined.name) + " in the room."
 	case "inv":
-		exaloc = "You take a closer look at a " + color("cyan", i.name) + " in your inventory."
+		exaloc = "You take a closer look at a " + color("cyan", itemExamined.name) + " in your inventory."
 	case "eq":
-		exaloc = "You take a closer look at a " + color("cyan", i.name) + " you have equipped."
+		exaloc = "You take a closer look at a " + color("cyan", itemExamined.name) + " you have equipped."
 	}
-	u.session.WriteLine(exaloc)
-	u.session.WriteLine("    " + i.desc)
-	u.session.WriteLine("    " + fmt.Sprint(i.id) + " - " + i.name + " - " + i.desc + " - " + i.slot + " - " + i.loc.getName())
+	examiner.session.WriteLine(exaloc)
+	examiner.session.WriteLine("    " + itemExamined.desc)
+	examiner.session.WriteLine("    " + fmt.Sprint(itemExamined.id) + " - " + itemExamined.name + " - " + itemExamined.desc + " - " + itemExamined.slot + " - " + itemExamined.loc.getName())
+}
+
+// tries to give itemGiven to userTo from userFrom. tries to match str arguments to user and item
+func give(userFrom *User, userTo string, itemGiven string) {
+
+	var item *Item
+	var target *User
+	for _, j := range userFrom.char.inv {
+		if strutil.ContainsFold(j.name, itemGiven) {
+			item = j
+		}
+	}
+	for _, u := range userFrom.room.users {
+		if strutil.ContainsFold(u.name, userTo) && u != userFrom {
+			target = u
+		}
+	}
+	if item != nil {
+		if target != nil {
+			userFrom.char.inv = removeItemFromSlice(item, userFrom.char.inv)
+			target.char.inv = append(target.char.inv, item)
+			item.loc = target.getLocation()
+			clientOutputChan <- ClientOutput{target, fmt.Sprintf("%s gives you %s.", color("cyan", userFrom.name), color("cyan", item.name)), &BroadcastEvent{}, w}
+			userFrom.session.WriteLine(fmt.Sprintf("You give %s to %s.", color("cyan", item.name), color("cyan", target.name)))
+			for _, u := range userFrom.room.users {
+				if u != target && u != userFrom {
+					clientOutputChan <- ClientOutput{u, fmt.Sprintf("%s gives %s to %s.", color("cyan", userFrom.name), color("cyan", item.name), color("cyan", target.name)), &BroadcastEvent{}, w}
+				}
+			}
+			return
+		}
+		userFrom.session.WriteLine("You don't see that person here.")
+		return
+	}
+	userFrom.session.WriteLine("You don't have that item in your inventory.")
+	return
 }
 
 func removeItemFromSlice(itemToRemove *Item, sliceOfItems []*Item) []*Item {
