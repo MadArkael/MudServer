@@ -1492,7 +1492,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 		} else {
 			usr.session.WriteLine(color("magenta", "What are you trying to drop?"))
 		}
-	case "take":
+	case "take", "taek":
 		if len(args) > 1 {
 			if args[1] != "" {
 				takeStr := args[1]
@@ -1512,98 +1512,35 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 		}
 	case "exa", "examine":
 		if len(args) > 1 {
-			if args[1] == "" {
+			if args[1] != "" {
+				for _, u := range usr.room.users {
+					if strutil.ContainsFold(u.name, args[1]) {
+						exaCharacter(usr, u)
+						return
+					}
+				}
+				for _, i := range usr.room.items {
+					if strutil.ContainsFold(i.name, args[1]) {
+						exaItem(usr, i, "room")
+						return
+					}
+				}
+				for _, i := range usr.char.inv {
+					if strutil.ContainsFold(i.name, args[1]) {
+						exaItem(usr, i, "inv")
+						return
+					}
+				}
+				for _, i := range usr.char.eq {
+					if strutil.ContainsFold(i.name, args[1]) {
+						exaItem(usr, i, "eq")
+						return
+					}
+				}
+				usr.session.WriteLine(color("magenta", "You see nothing with that name here."))
 				return
 			}
-			exaStr := ""
-			fail := true
-			for i := 1; i < len(args); i++ {
-				exaStr = exaStr + " " + args[i]
-			}
-			exaStr = strings.Trim(exaStr, " ")
-			exaLen := len(exaStr)
-
-			for _, u := range usr.room.users {
-				adjLen := exaLen
-				if len(u.name) < adjLen {
-					adjLen = len(u.name)
-				}
-				if strings.EqualFold(u.name[0:adjLen], exaStr[0:adjLen]) {
-					fail = false
-					itms := u.char.eq
-					eventCh <- ClientOutput{u, color("cyan", usr.name) + " looks you over thoroughly.", &BroadcastEvent{}, w}
-					for _, nt := range usr.room.users {
-						if nt != u && nt != usr {
-							eventCh <- ClientOutput{nt, color("cyan", usr.name) + " looks over " + u.name + "'s equipment.", &BroadcastEvent{}, w}
-						}
-					}
-					usr.session.WriteLine(u.name + " is wearing:")
-					if len(itms) == 0 {
-						usr.session.WriteLine(color("cyan", " ...nothing!"))
-					}
-					for _, s := range w.eqList {
-						if i := itms[s]; i != nil {
-
-							lenName := len(i.slot)
-							adjSlot := i.slot
-							// makes output :'s line up pretty
-							for j := lenName; j < 12; j++ {
-								adjSlot = " " + adjSlot
-							}
-							usr.session.WriteLine(fmt.Sprintf(color("cyan", "    %s: %s"), adjSlot, i.name))
-						}
-					}
-					return
-				}
-			}
-			for _, i := range usr.room.items {
-				adjLen := exaLen
-				if len(i.name) < adjLen {
-					adjLen = len(i.name)
-				}
-				if strings.EqualFold(i.name[0:adjLen], exaStr[0:adjLen]) {
-					fail = false
-					usr.session.WriteLine("You take a closer look at a " + color("cyan", i.name) + "...")
-					usr.session.WriteLine("    " + i.desc)
-					r, room := i.loc.(*Room)
-					if room {
-						usr.session.WriteLine("    " + fmt.Sprint(i.id) + " - " + i.name + " - " + i.desc + " - " + i.slot + " - " + r.name)
-					}
-					return
-				}
-			}
-			for _, i := range usr.char.inv {
-				adjLen := exaLen
-				if len(i.name) < adjLen {
-					adjLen = len(i.name)
-				}
-				if strings.EqualFold(i.name[0:adjLen], exaStr[0:adjLen]) {
-					fail = false
-					usr.session.WriteLine("You take a closer look at a " + color("cyan", i.name) + "...")
-					usr.session.WriteLine("    " + i.desc)
-					u, user := i.loc.(*User)
-					if user {
-						usr.session.WriteLine("    " + fmt.Sprint(i.id) + " - " + i.name + " - " + i.desc + " - " + i.slot + " - " + u.name)
-					}
-					return
-				}
-			}
-			eq := usr.char.eq
-			for _, i := range eq {
-				adjLen := exaLen
-				if len(i.name) < adjLen {
-					adjLen = len(i.name)
-				}
-				if strings.EqualFold(i.name[0:adjLen], exaStr[0:adjLen]) {
-					fail = false
-					usr.session.WriteLine("You take a closer look at a " + color("cyan", i.name) + "...")
-					usr.session.WriteLine("    " + i.desc)
-					return
-				}
-			}
-			if fail {
-				usr.session.WriteLine(color("magenta", "You see nothing with that name here."))
-			}
+			usr.session.WriteLine(color("magenta", "Examine needs a target to work."))
 		} else {
 			usr.session.WriteLine(color("magenta", "What are you trying to examine?"))
 		}
@@ -1720,6 +1657,48 @@ func dropItem(userDropper *User, itemToDrop *Item) {
 			userDropper.session.WriteLine("You drop a " + color("cyan", itemToDrop.name) + " on the ground here.")
 		}
 	}
+}
+
+func exaCharacter(u1 *User, u2 *User) {
+	itms := u2.char.eq
+	clientOutputChan <- ClientOutput{u2, color("cyan", u1.name) + " looks you over thoroughly.", &BroadcastEvent{}, w}
+	for _, nt := range u1.room.users {
+		if nt != u2 && nt != u1 {
+			clientOutputChan <- ClientOutput{nt, color("cyan", u1.name) + " looks over " + u2.name + "'s equipment.", &BroadcastEvent{}, w}
+		}
+	}
+	u1.session.WriteLine(u2.name + " is wearing:")
+	if len(itms) != 0 {
+		for _, s := range w.eqList {
+			if i := itms[s]; i != nil {
+
+				lenName := len(i.slot)
+				adjSlot := i.slot
+				// makes output :'s line up pretty
+				for j := lenName; j < 12; j++ {
+					adjSlot = " " + adjSlot
+				}
+				u1.session.WriteLine(fmt.Sprintf(color("cyan", "    %s: %s"), adjSlot, i.name))
+			}
+		}
+		return
+	}
+	u1.session.WriteLine(color("cyan", " ...nothing!"))
+}
+
+func exaItem(u *User, i *Item, loc string) {
+	exaloc := ""
+	switch loc {
+	case "room":
+		exaloc = "You take a closer look at a " + color("cyan", i.name) + " in the room."
+	case "inv":
+		exaloc = "You take a closer look at a " + color("cyan", i.name) + " in your inventory."
+	case "eq":
+		exaloc = "You take a closer look at a " + color("cyan", i.name) + " you have equipped."
+	}
+	u.session.WriteLine(exaloc)
+	u.session.WriteLine("    " + i.desc)
+	u.session.WriteLine("    " + fmt.Sprint(i.id) + " - " + i.name + " - " + i.desc + " - " + i.slot + " - " + i.loc.getName())
 }
 
 func removeItemFromSlice(itemToRemove *Item, sliceOfItems []*Item) []*Item {
