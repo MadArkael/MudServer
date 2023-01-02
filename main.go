@@ -31,7 +31,9 @@ const (
 	fingerLSlot string = "Left Finger"
 	fingerRSlot string = "Right Finger"
 
-	serverName string = "Ark's Chatrooms"
+	serverName         string = "Ark's Chatrooms"
+	serverPort         int    = 8080
+	serverYellDistance int    = 4
 )
 
 var clientOutputChan chan ClientOutput
@@ -279,6 +281,22 @@ func (w *World) loadEmotes() {
 			tar:  " points at you.",
 			tP:   " points at something you arent able to discern.",
 			tPt:  " points at ",
+		},
+		{
+			name: "tip",
+			fP:   "You tip your hat. Been watching westerns?",
+			fPt:  "You tip your hat to ",
+			tar:  " tips their hat to you.",
+			tP:   " tips their hat.",
+			tPt:  " tips their hat to ",
+		},
+		{
+			name: "grin",
+			fP:   "You grin.",
+			fPt:  "You grin at ",
+			tar:  " grins at you.",
+			tP:   " grins.",
+			tPt:  " grins at ",
 		},
 	}
 }
@@ -641,7 +659,7 @@ func emoteHandler(input []string, usr *User, w *World) {
 				if hasTarget {
 					input[1] = strings.TrimLeft(input[1], " ")
 					lenTar := len(input[1])
-					tar := &User{}
+					var tar *User
 
 					for _, tgt := range usr.room.users {
 						if len(tgt.name) < lenTar {
@@ -1029,7 +1047,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 		}
 
 		//i < desired yell distance
-		for i := 1; i < 4; i++ {
+		for i := 1; i < serverYellDistance; i++ {
 			for _, rm := range rooms {
 				for _, ex := range rm.exits {
 					r1 := getRoomByID(ex.linkedID, w)
@@ -1049,9 +1067,9 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			}
 		}
 		for _, recip := range recips {
-			eventCh <- ClientOutput{recip, color("red", fmt.Sprintf("%s yells, \"%s.\"", usr.name, msg)), &BroadcastEvent{}, w}
+			eventCh <- ClientOutput{recip, fmt.Sprintf("%s yells, \"%s.\"", color("cyan", usr.name), color("red", msg)), &BroadcastEvent{}, w}
 		}
-		usr.session.WriteLine(color("red", fmt.Sprintf("You yell, \"%s.\"", msg)))
+		usr.session.WriteLine(fmt.Sprintf("You yell, \"%s.\"", color("red", msg)))
 	case "shout":
 		args := strings.Split(cmd, " ")
 		msg := ""
@@ -1105,9 +1123,16 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 				usr.session.WriteLine(color("magenta", "What were you trying to look at?"))
 				return
 			default:
-				usr.session.WriteLine(color("magenta", "Not much to see."))
-				return
+				//examining a char probably
+				for _, u := range usr.room.users {
+					if strutil.ContainsFold(u.name, args[1]) {
+						exaCharacter(usr, u)
+						return
+					}
+				}
 			}
+			usr.session.WriteLine(color("magenta", "Not much to see."))
+			return
 		}
 	case "help":
 		for _, cmd := range w.cmnds {
@@ -1530,32 +1555,62 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 	case "exa", "examine":
 		if len(args) > 1 {
 			if args[1] != "" {
-				for _, u := range usr.room.users {
-					if strutil.ContainsFold(u.name, args[1]) {
-						exaCharacter(usr, u)
-						return
+				switch args[1] {
+				case "north", "east", "south", "west", "up", "down", "n", "e", "s", "w", "u", "d", "i", "o", "t", "in", "out", "through":
+					switch args[1] {
+					case "n":
+						args[1] = "north"
+					case "s":
+						args[1] = "south"
+					case "e":
+						args[1] = "east"
+					case "w":
+						args[1] = "west"
+					case "u":
+						args[1] = "up"
+					case "d":
+						args[1] = "down"
+					case "i":
+						args[1] = "in"
+					case "o":
+						args[1] = "out"
+					case "t":
+						args[1] = "through"
 					}
-				}
-				for _, i := range usr.room.items {
-					if strutil.ContainsFold(i.name, args[1]) {
-						exaItem(usr, i, "room")
-						return
+					for _, ext := range usr.room.exits {
+						if ext.keyword == args[1] {
+							usr.session.WriteLine(color("white", ext.lookMsg))
+							return
+						}
 					}
-				}
-				for _, i := range usr.char.inv {
-					if strutil.ContainsFold(i.name, args[1]) {
-						exaItem(usr, i, "inv")
-						return
+				default:
+					for _, u := range usr.room.users {
+						if strutil.ContainsFold(u.name, args[1]) {
+							exaCharacter(usr, u)
+							return
+						}
 					}
-				}
-				for _, i := range usr.char.eq {
-					if strutil.ContainsFold(i.name, args[1]) {
-						exaItem(usr, i, "eq")
-						return
+					for _, i := range usr.room.items {
+						if strutil.ContainsFold(i.name, args[1]) {
+							exaItem(usr, i, "room")
+							return
+						}
 					}
+					for _, i := range usr.char.inv {
+						if strutil.ContainsFold(i.name, args[1]) {
+							exaItem(usr, i, "inv")
+							return
+						}
+					}
+					for _, i := range usr.char.eq {
+						if strutil.ContainsFold(i.name, args[1]) {
+							exaItem(usr, i, "eq")
+							return
+						}
+					}
+					usr.session.WriteLine(color("magenta", "You see nothing with that name here."))
+					return
 				}
-				usr.session.WriteLine(color("magenta", "You see nothing with that name here."))
-				return
 			}
 			usr.session.WriteLine(color("magenta", "Examine needs a target to work."))
 		} else {
@@ -1647,6 +1702,10 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 	case "bird":
 		emoteHandler(args, usr, w)
 	case "point":
+		emoteHandler(args, usr, w)
+	case "tip":
+		emoteHandler(args, usr, w)
+	case "grin":
 		emoteHandler(args, usr, w)
 	default:
 		usr.session.WriteLine(color("magenta", fmt.Sprintf("'%s' is not recognized as a command.", args[0])))
@@ -1819,14 +1878,14 @@ func startServer(inputChannel chan ClientInput) error {
 	w.loadEmotes()
 	w.initEQList()
 	w.initItems()
-	ln, err := net.Listen("tcp", ":8080")
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", serverPort))
 	if err != nil {
 		return err
 	}
 
 	for {
 		conn, err := ln.Accept()
-
+		fmt.Printf("Incoming connection from %s\r\n", conn.RemoteAddr())
 		if err != nil {
 			log.Println("Error accepting connection", err)
 			continue
@@ -1855,7 +1914,7 @@ func startInputLoop(clientInputChannel <-chan ClientInput) {
 		case *UserJoinedEvent:
 			fmt.Println("User Joined:", input.user.name)
 			input.world.users = append(input.world.users, input.user)
-			input.user.session.WriteLine(color("cyan", fmt.Sprintf("Welcome %s. Type help for a list of commands.", color("cyan", input.user.name))))
+			input.user.session.WriteLine(fmt.Sprintf("Welcome %s. Type help for a list of commands.", color("cyan", input.user.name)))
 			input.user.room.addUser(input.user)
 			input.user.room.sendText(input.user)
 			for _, user := range input.world.users {
