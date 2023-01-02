@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"reflect"
 	"strconv"
@@ -118,7 +119,7 @@ type Character struct {
 	cha    int
 	eq     map[string]*Item
 	inv    []*Item
-	purse  int
+	gold   int
 	fort   int
 	ref    int
 	wil    int
@@ -127,6 +128,25 @@ type Character struct {
 	hp     int
 	mana   int
 	moves  int
+	exp    int
+}
+
+type Effects struct {
+	str   int
+	dex   int
+	con   int
+	intl  int
+	wis   int
+	cha   int
+	fort  int
+	ref   int
+	wil   int
+	att   int
+	dam   int
+	hp    int
+	mana  int
+	moves int
+	exp   int
 }
 
 type Item struct {
@@ -136,6 +156,10 @@ type Item struct {
 	slot string
 	loc  Location
 	uID  string
+	ac   int
+	dmg  string
+	dmgi int
+	eff  *Effects
 }
 
 type Container interface {
@@ -626,6 +650,7 @@ func (w *World) initEQList() {
 
 func (w *World) initItems() {
 	addItem(w.items, &Item{id: 1, name: "a leather cap", desc: "It's as plain as it gets, covers the melon, provides minor protection.", slot: headSlot, uID: time.Now().Format(time.RFC3339)})
+	addItem(w.items, &Item{id: 2, name: "a spiked chain flail", desc: "You could do some serious damage with this thing.", slot: holdRSlot, uID: time.Now().Format(time.RFC3339), dmg: "6d3", dmgi: 2})
 }
 
 // add items to the item map
@@ -981,7 +1006,7 @@ func (s *Session) WriteLine(str string) error {
 	return err
 }
 
-func getNameFromConn(conn net.Conn) string {
+func getNameFromConn(conn net.Conn) (string, error) {
 	buf := make([]byte, 4096)
 	name := ""
 	conn.Write([]byte(fmt.Sprintf("Welcome to %s\r\n", serverName)))
@@ -991,14 +1016,14 @@ func getNameFromConn(conn net.Conn) string {
 		if err != nil {
 			fmt.Println("User Disconnected During Name Creation")
 			conn.Close()
-			return ""
+			return "", err
 		}
 		name = string(buf[0 : n-2])
 		if len(name) < 3 || len(name) > 15 {
 			conn.Write([]byte("Names need to be 3 - 15 characters\r\n"))
 		}
 	}
-	return strings.ToUpper(name[:1]) + name[1:]
+	return strings.ToUpper(name[:1]) + name[1:], nil
 }
 
 func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
@@ -1083,7 +1108,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			}
 		}
 		usr.session.WriteLine(color("blue", fmt.Sprintf("You shout, \"%s.\"", msg)))
-	case "l", "look":
+	case "l", "look", "exa", "examine":
 		if len(args) < 2 {
 			usr.room.sendText(usr)
 		} else {
@@ -1125,14 +1150,36 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			default:
 				//examining a char probably
 				for _, u := range usr.room.users {
-					if strutil.ContainsFold(u.name, args[1]) {
+					if strutil.ContainsFold(u.name, args[1]) && u != usr {
 						exaCharacter(usr, u)
 						return
 					}
+					if u == usr {
+						usr.session.WriteLine(color("magenta", "I recommend just typing 'eq' or looking in a mirror."))
+						return
+					}
 				}
+				for _, i := range usr.room.items {
+					if strutil.ContainsFold(i.name, args[1]) {
+						exaItem(usr, i, "room")
+						return
+					}
+				}
+				for _, i := range usr.char.inv {
+					if strutil.ContainsFold(i.name, args[1]) {
+						exaItem(usr, i, "inv")
+						return
+					}
+				}
+				for _, i := range usr.char.eq {
+					if strutil.ContainsFold(i.name, args[1]) {
+						exaItem(usr, i, "eq")
+						return
+					}
+				}
+				usr.session.WriteLine(color("magenta", "You see nothing with that name here."))
+				return
 			}
-			usr.session.WriteLine(color("magenta", "Not much to see."))
-			return
 		}
 	case "help":
 		for _, cmd := range w.cmnds {
@@ -1340,7 +1387,16 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						adjStr = len(s)
 					}
 					if strings.EqualFold(s[0:adjStr], newStr[0:adjStr]) {
-						i := &Item{id: m[0].id, name: m[0].name, desc: m[0].desc, slot: m[0].slot, loc: usr.getLocation(), uID: fmt.Sprint(m[0].id) + "|" + time.Now().Format(time.RFC3339)}
+						i := &Item{
+							id:   m[0].id,
+							name: m[0].name,
+							desc: m[0].desc,
+							slot: m[0].slot,
+							loc:  usr.getLocation(),
+							uID:  fmt.Sprint(m[0].id) + "|" + time.Now().Format(time.RFC3339),
+							dmg:  m[0].dmg,
+							dmgi: m[0].dmgi,
+						}
 						usr.char.inv = append(usr.char.inv, i)
 						addItem(w.items, i)
 						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s'", args[1], i.name))
@@ -1353,7 +1409,18 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 				for s, m := range w.items {
 					if m[0].id == n {
 						fail = false
-						item := &Item{id: m[0].id, name: m[0].name, desc: m[0].desc, slot: m[0].slot, loc: usr.getLocation(), uID: fmt.Sprint(m[0].id) + "|" + time.Now().Format(time.RFC3339)}
+						item := &Item{}
+						item.cloneItem(m[0])
+						/*item := &Item{id: m[0].id,
+							name: m[0].name,
+							desc: m[0].desc,
+							slot: m[0].slot,
+							loc:  usr.getLocation(),
+							uID:  fmt.Sprint(m[0].id) + "|" + time.Now().Format(time.RFC3339),
+							dmg:  m[0].dmg,
+							dmgi: m[0].dmgi,
+						}*/
+						item.loc = usr.getLocation()
 						usr.char.inv = append(usr.char.inv, item)
 						addItem(w.items, item)
 						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s' - uID: %s", fmt.Sprint(n), s, item.uID))
@@ -1552,70 +1619,70 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 		} else {
 			usr.session.WriteLine(color("magenta", "What are you trying to take?"))
 		}
-	case "exa", "examine":
-		if len(args) > 1 {
-			if args[1] != "" {
+	/*case "exa", "examine":
+	if len(args) > 1 {
+		if args[1] != "" {
+			switch args[1] {
+			case "north", "east", "south", "west", "up", "down", "n", "e", "s", "w", "u", "d", "i", "o", "t", "in", "out", "through":
 				switch args[1] {
-				case "north", "east", "south", "west", "up", "down", "n", "e", "s", "w", "u", "d", "i", "o", "t", "in", "out", "through":
-					switch args[1] {
-					case "n":
-						args[1] = "north"
-					case "s":
-						args[1] = "south"
-					case "e":
-						args[1] = "east"
-					case "w":
-						args[1] = "west"
-					case "u":
-						args[1] = "up"
-					case "d":
-						args[1] = "down"
-					case "i":
-						args[1] = "in"
-					case "o":
-						args[1] = "out"
-					case "t":
-						args[1] = "through"
-					}
-					for _, ext := range usr.room.exits {
-						if ext.keyword == args[1] {
-							usr.session.WriteLine(color("white", ext.lookMsg))
-							return
-						}
-					}
-				default:
-					for _, u := range usr.room.users {
-						if strutil.ContainsFold(u.name, args[1]) {
-							exaCharacter(usr, u)
-							return
-						}
-					}
-					for _, i := range usr.room.items {
-						if strutil.ContainsFold(i.name, args[1]) {
-							exaItem(usr, i, "room")
-							return
-						}
-					}
-					for _, i := range usr.char.inv {
-						if strutil.ContainsFold(i.name, args[1]) {
-							exaItem(usr, i, "inv")
-							return
-						}
-					}
-					for _, i := range usr.char.eq {
-						if strutil.ContainsFold(i.name, args[1]) {
-							exaItem(usr, i, "eq")
-							return
-						}
-					}
-					usr.session.WriteLine(color("magenta", "You see nothing with that name here."))
-					return
+				case "n":
+					args[1] = "north"
+				case "s":
+					args[1] = "south"
+				case "e":
+					args[1] = "east"
+				case "w":
+					args[1] = "west"
+				case "u":
+					args[1] = "up"
+				case "d":
+					args[1] = "down"
+				case "i":
+					args[1] = "in"
+				case "o":
+					args[1] = "out"
+				case "t":
+					args[1] = "through"
 				}
+				for _, ext := range usr.room.exits {
+					if ext.keyword == args[1] {
+						usr.session.WriteLine(color("white", ext.lookMsg))
+						return
+					}
+				}
+			default:
+				for _, u := range usr.room.users {
+					if strutil.ContainsFold(u.name, args[1]) {
+						exaCharacter(usr, u)
+						return
+					}
+				}
+				for _, i := range usr.room.items {
+					if strutil.ContainsFold(i.name, args[1]) {
+						exaItem(usr, i, "room")
+						return
+					}
+				}
+				for _, i := range usr.char.inv {
+					if strutil.ContainsFold(i.name, args[1]) {
+						exaItem(usr, i, "inv")
+						return
+					}
+				}
+				for _, i := range usr.char.eq {
+					if strutil.ContainsFold(i.name, args[1]) {
+						exaItem(usr, i, "eq")
+						return
+					}
+				}
+				usr.session.WriteLine(color("magenta", "You see nothing with that name here."))
+				return
 			}
-			usr.session.WriteLine(color("magenta", "Examine needs a target to work."))
-		} else {
-			usr.session.WriteLine(color("magenta", "What are you trying to examine?"))
 		}
+		usr.session.WriteLine(color("magenta", "Examine needs a target to work."))
+	} else {
+		usr.session.WriteLine(color("magenta", "What are you trying to examine?"))
+	}*/
 	case "emotes":
 		output := ""
 		for _, e := range w.emotes {
@@ -1674,11 +1741,15 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			}
 		*/
 	case "test":
-		for _, i := range usr.room.items {
-			if strings.Contains(i.name, args[1]) {
-				usr.room.items = removeItemFromSlice(i, usr.room.items)
-				usr.char.inv = append(usr.char.inv, i)
+		if weapon := usr.char.eq[holdRSlot]; weapon != nil {
+			if weapon.isWeapon() {
+				usr.session.WriteLine(fmt.Sprintf("Your %s rolled a %d", weapon.name, weapon.rollDamage()))
+			} else {
+				usr.session.WriteLine("You're not holding a weapon.")
+				usr.session.WriteLine(fmt.Sprintf("Your %s has a damage-roll of %s+%d.", weapon.name, weapon.dmg, weapon.dmgi))
 			}
+		} else {
+			usr.session.WriteLine("holdRSlot == nil")
 		}
 	case "give":
 		if len(args) == 3 {
@@ -1711,6 +1782,41 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 		usr.session.WriteLine(color("magenta", fmt.Sprintf("'%s' is not recognized as a command.", args[0])))
 		return
 	}
+}
+
+func (i *Item) cloneItem(itemToClone *Item) {
+	i.id = itemToClone.id
+	i.name = itemToClone.name
+	i.desc = itemToClone.desc
+	i.slot = itemToClone.slot
+	i.uID = fmt.Sprint(itemToClone.id) + "|" + time.Now().Format(time.RFC3339)
+	i.ac = itemToClone.ac
+	i.dmg = itemToClone.dmg
+	i.dmgi = itemToClone.dmgi
+	i.eff = itemToClone.eff
+}
+
+func (i *Item) isWeapon() bool {
+	if i.dmg != "" || i.dmgi != 0 {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (i *Item) rollDamage() int {
+	both := strings.Split(i.dmg, "d")
+	qtyDice, err := strconv.Atoi(both[0])
+	diceSides, err2 := strconv.Atoi(both[1])
+	roll := i.dmgi
+	if err == nil && err2 == nil {
+		for i := 0; i < qtyDice; i++ {
+			rand.Seed(time.Now().UnixMicro())
+			rand := rand.Intn(diceSides) + 1
+			roll += rand
+		}
+	}
+	return roll
 }
 
 // removes itemToTake from sliceOfItems, handles output to users, returns the updated sliceOfItems
@@ -1784,7 +1890,6 @@ func exaItem(examiner *User, itemExamined *Item, itemlocation string) {
 	}
 	examiner.session.WriteLine(exaloc)
 	examiner.session.WriteLine("    " + itemExamined.desc)
-	examiner.session.WriteLine("    " + fmt.Sprint(itemExamined.id) + " - " + itemExamined.name + " - " + itemExamined.desc + " - " + itemExamined.slot + " - " + itemExamined.loc.getName())
 }
 
 // tries to give itemGiven to userTo from userFrom. tries to match str arguments to user and item
@@ -1893,7 +1998,12 @@ func startServer(inputChannel chan ClientInput) error {
 
 		go func() {
 			session := &Session{conn}
-			user := &User{name: getNameFromConn(conn), session: session, room: getRoomByID(1, w)}
+			name, err := getNameFromConn(conn)
+			if err != nil {
+				log.Println("Error handling connection", err)
+				return
+			}
+			user := &User{name: name, session: session, room: getRoomByID(1, w)}
 			if err := handleConnection(w, user, session, conn, inputChannel); err != nil {
 				log.Println("Error handling connection", err)
 				inputChannel <- ClientInput{user, &UserLeftEvent{user}, w}
