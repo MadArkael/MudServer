@@ -926,7 +926,7 @@ func moveUser(u *User, from *Room, to *Room, dir string, w *World) {
 			to.addUser(u)
 			u.room = to
 			to.sendText(u)
-
+			u.session.WriteLine("You go " + dir + ".")
 		} else {
 			clientOutputChan <- ClientOutput{user, color("green", u.name+" heads "+dir+"."), &BroadcastEvent{}, w}
 		}
@@ -1154,7 +1154,7 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						exaCharacter(usr, u)
 						return
 					}
-					if u == usr {
+					if strutil.ContainsFold(u.name, args[1]) && u == usr {
 						usr.session.WriteLine(color("magenta", "I recommend just typing 'eq' or looking in a mirror."))
 						return
 					}
@@ -1387,23 +1387,15 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						adjStr = len(s)
 					}
 					if strings.EqualFold(s[0:adjStr], newStr[0:adjStr]) {
-						i := &Item{
-							id:   m[0].id,
-							name: m[0].name,
-							desc: m[0].desc,
-							slot: m[0].slot,
-							loc:  usr.getLocation(),
-							uID:  fmt.Sprint(m[0].id) + "|" + time.Now().Format(time.RFC3339),
-							dmg:  m[0].dmg,
-							dmgi: m[0].dmgi,
-						}
+						i := &Item{}
+						i.cloneItem(m[0])
+						i.loc = usr.getLocation()
 						usr.char.inv = append(usr.char.inv, i)
 						addItem(w.items, i)
-						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s'", args[1], i.name))
+						usr.session.WriteLine(fmt.Sprintf("Arg: '%s' yielded Item: '%s' - uID: %s", fmt.Sprint(n), s, i.uID))
 						fail = false
 						return
 					}
-
 				}
 			} else {
 				for s, m := range w.items {
@@ -1411,15 +1403,6 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						fail = false
 						item := &Item{}
 						item.cloneItem(m[0])
-						/*item := &Item{id: m[0].id,
-							name: m[0].name,
-							desc: m[0].desc,
-							slot: m[0].slot,
-							loc:  usr.getLocation(),
-							uID:  fmt.Sprint(m[0].id) + "|" + time.Now().Format(time.RFC3339),
-							dmg:  m[0].dmg,
-							dmgi: m[0].dmgi,
-						}*/
 						item.loc = usr.getLocation()
 						usr.char.inv = append(usr.char.inv, item)
 						addItem(w.items, item)
@@ -1890,6 +1873,9 @@ func exaItem(examiner *User, itemExamined *Item, itemlocation string) {
 	}
 	examiner.session.WriteLine(exaloc)
 	examiner.session.WriteLine("    " + itemExamined.desc)
+	if itemExamined.isWeapon() {
+		examiner.session.WriteLine(fmt.Sprintf("    %s is a weapon with a damage-roll of %s+%d", itemExamined.name, itemExamined.dmg, itemExamined.dmgi))
+	}
 }
 
 // tries to give itemGiven to userTo from userFrom. tries to match str arguments to user and item
