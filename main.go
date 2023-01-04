@@ -19,6 +19,7 @@ const (
 	aboutSlot   string = "About"
 	chestSlot   string = "Chest"
 	backSlot    string = "Back"
+	holdBSlot   string = "Both Hands"
 	holdLSlot   string = "Left Hand"
 	holdRSlot   string = "Right Hand"
 	waistSlot   string = "Waist"
@@ -635,6 +636,7 @@ func (w *World) initEQList() {
 	w.eqList = append(w.eqList, aboutSlot)
 	w.eqList = append(w.eqList, chestSlot)
 	w.eqList = append(w.eqList, backSlot)
+	w.eqList = append(w.eqList, holdBSlot)
 	w.eqList = append(w.eqList, holdLSlot)
 	w.eqList = append(w.eqList, holdRSlot)
 	w.eqList = append(w.eqList, waistSlot)
@@ -649,7 +651,7 @@ func (w *World) initEQList() {
 }
 
 func (w *World) initItems() {
-	addItem(w.items, &Item{id: 1, name: "a leather cap", desc: "It's as plain as it gets, covers the melon, provides minor protection.", slot: headSlot, uID: time.Now().Format(time.RFC3339)})
+	addItem(w.items, &Item{id: 1, name: "a leather cap", desc: "It's as plain as it gets, covers the melon, provides minor protection.", slot: headSlot, uID: time.Now().Format(time.RFC3339), ac: 2})
 	addItem(w.items, &Item{id: 2, name: "a spiked chain flail", desc: "You could do some serious damage with this thing.", slot: holdRSlot, uID: time.Now().Format(time.RFC3339), dmg: "6d3", dmgi: 2})
 }
 
@@ -1375,65 +1377,53 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			}
 		}
 	case "wear", "waer":
-		wearStr := ""
-		for i := 1; i < len(args); i++ {
-			wearStr = wearStr + " " + args[i]
-		}
-		wearStr = strings.TrimLeft(wearStr, " ")
 		if len(args) > 1 {
-			fail := true
-			lenStr := len(wearStr)
 			for _, i := range usr.char.inv {
-				adjStr := lenStr
-				if len(i.name) < lenStr {
-					adjStr = len(i.name)
-				}
-				//wear by matching the first part of the name length of input string
-				if strings.EqualFold(i.name[0:adjStr], wearStr[0:adjStr]) {
-					//tryToWear(i, usr, w)
-					fail = false
+				if strutil.ContainsFold(i.name, args[1]) {
 					if usr.char.eq[i.slot] != nil {
 						usr.session.WriteLine("You already have something equipped on your " + strings.ToLower(i.slot) + ".")
 						return
 					}
-					usr.char.eq[i.slot] = i
-					//removeItemFromInventory(i, usr)
-					usr.char.inv = removeItemFromSlice(i, usr.char.inv)
-					usr.session.WriteLine(fmt.Sprintf("You place a %s on your %s.", color("cyan", i.name), strings.ToLower(i.slot)))
-					for _, u := range usr.room.users {
-						if usr != u {
-							OutputChan <- ClientOutput{u, usr.name + " places a " + color("cyan", i.name) + " on their " + strings.ToLower(i.slot) + ".", &BroadcastEvent{}, w}
-						}
-					}
-					return
-				}
-				//didnt match first part, lets break items into arguments
-				itmArgs := strings.Split(i.name, " ")
-				for _, k := range itmArgs {
-					if strings.EqualFold(k, args[1]) {
-						if usr.char.eq[i.slot] != nil {
-							usr.session.WriteLine("You already have something equipped on your " + strings.ToLower(i.slot) + ".")
+					if strutil.ContainsFold(i.slot, "hand") {
+						if usr.char.eq[holdLSlot] != nil || usr.char.eq[holdRSlot] != nil && i.slot == holdBSlot {
+							usr.session.WriteLine("You already have something equipped in your hands.")
 							return
 						}
-						fail = false
-						usr.char.eq[i.slot] = i
-						//removeItemFromInventory(i, usr)
-						usr.char.inv = removeItemFromSlice(i, usr.char.inv)
-						usr.session.WriteLine(fmt.Sprintf("You place a %s on your %s.", color("cyan", i.name), strings.ToLower(i.slot)))
-						for _, u := range usr.room.users {
-							if usr != u {
-								OutputChan <- ClientOutput{u, usr.name + " places a " + color("cyan", i.name) + " on their " + strings.ToLower(i.slot) + ".", &BroadcastEvent{}, w}
+						if usr.char.eq[holdBSlot] != nil {
+							usr.session.WriteLine("You already have something equipped in your hands.")
+							return
+						}
+					}
+					usr.char.eq[i.slot] = i
+					usr.char.inv = removeItemFromSlice(i, usr.char.inv)
+					if strutil.ContainsFold(i.slot, "hand") {
+						if i.slot == holdBSlot {
+							usr.session.WriteLine(fmt.Sprintf("You grab hold of %s in %s.", color("cyan", i.name), strings.ToLower(i.slot)))
+
+						} else {
+							usr.session.WriteLine(fmt.Sprintf("You grab hold of %s in your %s.", color("cyan", i.name), strings.ToLower(i.slot)))
+						}
+					} else {
+						usr.session.WriteLine(fmt.Sprintf("You place %s on your %s.", color("cyan", i.name), strings.ToLower(i.slot)))
+					}
+					for _, u := range usr.room.users {
+						if usr != u {
+							if strutil.ContainsFold(i.slot, "hand") {
+								if i.slot == holdBSlot {
+									OutputChan <- ClientOutput{u, usr.name + " holds " + color("cyan", i.name) + " in " + strings.ToLower(i.slot) + ".", &BroadcastEvent{}, w}
+								} else {
+									OutputChan <- ClientOutput{u, usr.name + " holds " + color("cyan", i.name) + " in their " + strings.ToLower(i.slot) + ".", &BroadcastEvent{}, w}
+								}
+							} else {
+								OutputChan <- ClientOutput{u, usr.name + " places " + color("cyan", i.name) + " on their " + strings.ToLower(i.slot) + ".", &BroadcastEvent{}, w}
 							}
 						}
 					}
-				}
-				if !fail {
 					return
 				}
 			}
-			if fail {
-				usr.session.WriteLine("You are not carrying " + args[1])
-			}
+			usr.session.WriteLine("You are not carrying " + args[1])
+
 		} else {
 			usr.session.WriteLine("What are you trying to wear?")
 		}
@@ -1491,23 +1481,9 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 			usr.session.WriteLine("What are you trying to remove?")
 		}
 	case "slots":
-		usr.session.WriteLine(color("magenta", headSlot))
-		usr.session.WriteLine(color("magenta", faceSlot))
-		usr.session.WriteLine(color("magenta", neckSlot))
-		usr.session.WriteLine(color("magenta", aboutSlot))
-		usr.session.WriteLine(color("magenta", chestSlot))
-		usr.session.WriteLine(color("magenta", backSlot))
-		usr.session.WriteLine(color("magenta", holdLSlot))
-		usr.session.WriteLine(color("magenta", holdRSlot))
-		usr.session.WriteLine(color("magenta", waistSlot))
-		usr.session.WriteLine(color("magenta", legsSlot))
-		usr.session.WriteLine(color("magenta", feetSlot))
-		usr.session.WriteLine(color("magenta", armsSlot))
-		usr.session.WriteLine(color("magenta", wristLSlot))
-		usr.session.WriteLine(color("magenta", wristRSlot))
-		usr.session.WriteLine(color("magenta", handsSlot))
-		usr.session.WriteLine(color("magenta", fingerLSlot))
-		usr.session.WriteLine(color("magenta", fingerRSlot))
+		for _, s := range w.eqList {
+			usr.session.WriteLine(color("magenta", s))
+		}
 	case "drop":
 		if len(args) > 1 {
 			if args[1] != "" {
@@ -1649,7 +1625,15 @@ func (i *Item) cloneItem(itemToClone *Item) {
 }
 
 func (i *Item) isWeapon() bool {
-	if i.dmg != "" || i.dmgi != 0 {
+	if i.dmg != "" && i.dmg != "0" || i.dmgi != 0 {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (i *Item) isArmor() bool {
+	if i.ac != 0 {
 		return true
 	} else {
 		return false
@@ -1743,7 +1727,13 @@ func exaItem(examiner *User, itemExamined *Item, itemlocation string) {
 	examiner.session.WriteLine(exaloc)
 	examiner.session.WriteLine("    " + itemExamined.desc)
 	if itemExamined.isWeapon() {
-		examiner.session.WriteLine(fmt.Sprintf("    %s is a weapon with a damage-roll of %s+%d", itemExamined.name, itemExamined.dmg, itemExamined.dmgi))
+		examiner.session.WriteLine(fmt.Sprintf("    %s is a weapon with a damage-roll of %s+%d held in the %s", itemExamined.name, itemExamined.dmg, itemExamined.dmgi, strings.ToLower(itemExamined.slot)))
+	}
+	if itemExamined.isArmor() {
+		if strutil.ContainsFold(itemExamined.slot, "hand") {
+			examiner.session.WriteLine(fmt.Sprintf("    %s is a piece of armor with an AC rating of %d, held in the %s.", itemExamined.name, itemExamined.ac, strings.ToLower(itemExamined.slot)))
+		}
+		examiner.session.WriteLine(fmt.Sprintf("    %s is a piece of armor with an AC rating of %d, worn on the %s.", itemExamined.name, itemExamined.ac, strings.ToLower(itemExamined.slot)))
 	}
 }
 
@@ -1811,6 +1801,22 @@ func createItemUTO(u *User) *Item {
 	itm.name = answer[0]
 	itm.desc = answer[1]
 	itm.slot = answer[2]
+	found := false
+	b := itm.slot
+	for _, s := range w.eqList {
+		if strutil.ContainsFold(s, itm.slot) {
+			itm.slot = s
+			u.session.WriteLine(fmt.Sprintf("Item slot corrected to %s.", s))
+			found = true
+			if found {
+				break
+			}
+		}
+	}
+	if !found {
+		u.session.WriteLine(fmt.Sprintf("%s is not a valid item slot, aborting.", b))
+		return nil
+	}
 	tempac, errA := strconv.Atoi(answer[3])
 	if errA != nil {
 		u.session.WriteLine("Item creation failed on AC.")
@@ -1862,7 +1868,9 @@ func handleConnection(world *World, user *User, session *Session, conn net.Conn,
 		switch input {
 		case "create":
 			itm := createItemUTO(user)
-			addItem(w.items, itm)
+			if itm != nil {
+				addItem(w.items, itm)
+			}
 		default:
 			inputChannel <- ClientInput{user, &InputEvent{input}, world}
 		}
