@@ -1557,12 +1557,27 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 							return
 						}
 						if lc, ok := m[n2].loc.(*User); ok {
-							usr.char.inv = removeItemFromSlice(m[n2], lc.char.inv)
-							usr.char.inv = append(usr.char.inv, m[n2])
-							m[n2].loc = usr.getLocation()
-							usr.session.WriteLine(fmt.Sprintf("You stole %s from %s!", color("cyan", m[n2].name), color("red", lc.name)))
-							OutputChan <- ClientOutput{lc, fmt.Sprintf("%s stole %s from your inventory!", color("red", usr.name), color("cyan", m[n2].name)), &BroadcastEvent{}, w}
-							return
+							found := false
+							for _, i := range lc.char.inv {
+								if m[n2] == i {
+									lc.char.inv = removeItemFromSlice(m[n2], lc.char.inv)
+									found = true
+								}
+							}
+							if found {
+								usr.char.inv = append(usr.char.inv, m[n2])
+								m[n2].loc = usr.getLocation()
+								usr.session.WriteLine(fmt.Sprintf("You stole %s from %s!", color("cyan", m[n2].name), color("red", lc.name)))
+								OutputChan <- ClientOutput{lc, fmt.Sprintf("%s stole %s from your inventory!", color("red", usr.name), color("cyan", m[n2].name)), &BroadcastEvent{}, w}
+								return
+							} else {
+								delete(lc.char.eq, m[n2].slot)
+								usr.char.inv = append(usr.char.inv, m[n2])
+								m[n2].loc = usr.getLocation()
+								usr.session.WriteLine(fmt.Sprintf("You stole %s from %s!", color("cyan", m[n2].name), color("red", lc.name)))
+								OutputChan <- ClientOutput{lc, fmt.Sprintf("%s stole %s from your inventory!", color("red", usr.name), color("cyan", m[n2].name)), &BroadcastEvent{}, w}
+								return
+							}
 						}
 					}
 				}
