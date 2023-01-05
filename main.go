@@ -1385,9 +1385,11 @@ func executeCmd(cmd string, usr *User, w *World, eventCh chan ClientOutput) {
 						return
 					}
 					if strutil.ContainsFold(i.slot, "hand") {
-						if usr.char.eq[holdLSlot] != nil || usr.char.eq[holdRSlot] != nil && i.slot == holdBSlot {
-							usr.session.WriteLine("You already have something equipped in your hands.")
-							return
+						if i.slot == holdBSlot {
+							if usr.char.eq[holdLSlot] != nil || usr.char.eq[holdRSlot] != nil {
+								usr.session.WriteLine("You already have something equipped in your hands.")
+								return
+							}
 						}
 						if usr.char.eq[holdBSlot] != nil {
 							usr.session.WriteLine("You already have something equipped in your hands.")
