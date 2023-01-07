@@ -1749,6 +1749,7 @@ func exaItem(examiner *User, itemExamined *Item, itemlocation string) {
 	if itemExamined.isArmor() {
 		if strutil.ContainsFold(itemExamined.slot, "hand") {
 			examiner.session.WriteLine(fmt.Sprintf("    %s is a piece of armor with an AC rating of %d, held in the %s.", itemExamined.name, itemExamined.ac, strings.ToLower(itemExamined.slot)))
+			return
 		}
 		examiner.session.WriteLine(fmt.Sprintf("    %s is a piece of armor with an AC rating of %d, worn on the %s.", itemExamined.name, itemExamined.ac, strings.ToLower(itemExamined.slot)))
 	}
